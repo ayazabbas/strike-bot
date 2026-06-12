@@ -1,0 +1,33 @@
+# Secrets and env files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*wallet*.json
+*keystore*.json
+*seed*
+*mnemonic*
+
+# Local runtime artifacts
+data/
+logs/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+.npm/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
