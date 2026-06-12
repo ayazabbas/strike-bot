@@ -1,0 +1,79 @@
+import type { RunMode } from "../config.js";
+
+export type AssetSymbol = "BTC";
+export type MarketDirection = "UP" | "DOWN";
+export type DecisionAction = "no_trade" | "enter";
+export type DecisionReason =
+  | "inspect_mode"
+  | "strategy_not_configured"
+  | "market_not_supported"
+  | "risk_rejected"
+  | "live_not_approved"
+  | "twak_not_ready";
+
+export interface PredictFunMarket {
+  readonly id: string;
+  readonly venue: "predict.fun";
+  readonly asset: string;
+  readonly intervalMinutes: number;
+  readonly directions: readonly MarketDirection[];
+  readonly startsAt: Date;
+  readonly closesAt: Date;
+  readonly resolvesAt: Date;
+  readonly liquidityUsd?: number;
+  readonly status: "open" | "closed" | "resolving" | "settled";
+}
+
+export interface BtcFiveMinuteMarket extends PredictFunMarket {
+  readonly asset: AssetSymbol;
+  readonly intervalMinutes: 5;
+  readonly directions: readonly ["UP", "DOWN"];
+}
+
+export interface MarketSnapshot {
+  readonly capturedAt: Date;
+  readonly markets: readonly PredictFunMarket[];
+}
+
+export interface MacroSnapshot {
+  readonly capturedAt: Date;
+  readonly source: "coinmarketcap";
+  readonly btcUsd?: number;
+  readonly stubbed: boolean;
+}
+
+export interface BtcCandleMetadata {
+  readonly capturedAt: Date;
+  readonly source: "pyth-pro";
+  readonly symbol: AssetSymbol;
+  readonly intervalMinutes: 5;
+  readonly latestCandleOpenTime?: Date;
+  readonly stubbed: boolean;
+}
+
+export interface NoTradeDecision {
+  readonly action: "no_trade";
+  readonly reason: DecisionReason;
+  readonly marketId?: string;
+  readonly runMode: RunMode;
+  readonly createdAt: Date;
+}
+
+export interface EnterDecision {
+  readonly action: "enter";
+  readonly marketId: string;
+  readonly direction: MarketDirection;
+  readonly notionalUsd: number;
+  readonly runMode: RunMode;
+  readonly createdAt: Date;
+}
+
+export type StrategyDecision = NoTradeDecision | EnterDecision;
+
+export interface ExecutionResult {
+  readonly mode: RunMode;
+  readonly broadcast: false;
+  readonly status: "skipped" | "paper_recorded" | "prepared_not_broadcast";
+  readonly reason?: DecisionReason | "no_trade";
+  readonly decision: StrategyDecision;
+}
