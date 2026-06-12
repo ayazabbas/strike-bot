@@ -48,6 +48,14 @@ export interface BtcCandleMetadata {
   readonly symbol: AssetSymbol;
   readonly intervalMinutes: 5;
   readonly latestCandleOpenTime?: Date;
+  readonly latestCandle?: {
+    readonly openTime: Date;
+    readonly open: number;
+    readonly high: number;
+    readonly low: number;
+    readonly close: number;
+    readonly volume?: number;
+  };
   readonly stubbed: boolean;
 }
 

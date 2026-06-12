@@ -55,3 +55,12 @@ Stop before exact strategy implementation. Live trading remains disabled unless 
 
 - Created this macro planning doc at `docs/macro-plan.md`.
 - Current repo state before continuing: two local commits exist (`docs: add strike bot project guidance`, `feat: scaffold btc 5m execution foundation`), tests/typecheck/audit passed, no uncommitted changes except this planning doc.
+- Committed the macro plan and pushed `main` to GitHub.
+- Researched predict.fun developer docs. Confirmed REST base `https://api.predict.fun`, read-only market endpoint `GET /v1/markets`, orderbook endpoint `GET /v1/markets/{marketId}/orderbook`, and required `x-api-key` header. Public unauthenticated calls return `401 unauthorized`, so the adapter must be safe/read-only but needs `PREDICT_FUN_API_KEY` for live discovery.
+- Researched predict.fun SDK. Confirmed official TypeScript package `@predictdotfun/sdk` with `OrderBuilder`, `ChainId.BnbMainnet`, approval helpers, market/limit order builders, and BNB mainnet contract constants. Do not wire live signing yet.
+- Researched Pyth Pro History API. Confirmed base `https://pyth.dourolabs.app/v1`; `GET /{channel}/history` provides TradingView-format OHLC with `symbol`, `from`, `to`, `resolution`; resolution `5` is 5 minutes. Verified `GET /v1/real_time/history?symbol=Crypto.BTC/USD&resolution=5` returns BTC candles without auth.
+- Researched Trust Wallet Agent Kit. Confirmed Trust Wallet Agent SDK/TWAK docs recommend `@trustwallet/cli` / `twak`, developer portal credentials, `~/.twak/credentials.json`, and env vars `TWAK_ACCESS_ID` + `TWAK_HMAC_SECRET`; use TWAK readiness checks without storing secrets in repo.
+- Implemented Step 2 read-only predict.fun `GET /v1/markets` adapter with optional `PREDICT_FUN_API_KEY`, safe empty snapshots when credentials/network/API shape are unavailable, and no order placement or broadcast path.
+- Implemented Step 3 TWAK readiness checks for env credentials, external credentials files, BSC RPC config, and CLI presence. The adapter does not store credentials, sign transactions, or broadcast.
+- Implemented Step 4 Pyth History API adapter for `Crypto.BTC/USD`, `resolution=5`, recent `from`/`to` timestamps, normalized latest OHLC candle metadata, and stub fallback on API errors.
+- Added unit tests with mocked fetch/TWAK readiness inputs. `npm test` and `npm run typecheck` passed locally after implementation.

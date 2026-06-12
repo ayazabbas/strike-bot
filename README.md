@@ -71,9 +71,16 @@ Use names like these, but keep real values out of git:
 RUN_MODE=inspect # inspect|paper|dry_run|live
 CMC_API_KEY=
 PYTH_PRO_API_KEY=
+PYTH_HISTORY_BASE_URL=https://pyth.dourolabs.app/v1
+PYTH_HISTORY_CHANNEL=real_time
+PYTH_HISTORY_SYMBOL=Crypto.BTC/USD
+PYTH_HISTORY_LOOKBACK_MINUTES=60
 PREDICT_FUN_BASE_URL=https://api.predict.fun
+PREDICT_FUN_API_KEY=
 TRUST_WALLET_AGENT_KIT_ENABLED=true
-TRUST_WALLET_AGENT_KIT_CONFIG_PATH=/absolute/path/outside/repo/to/twak-config.json
+TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
+TWAK_ACCESS_ID=
+TWAK_HMAC_SECRET=
 BSC_RPC_URL=
 DATABASE_PATH=./data/strike-bot.sqlite
 MAX_POSITION_USD=5

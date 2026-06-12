@@ -1,8 +1,8 @@
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { StubCmcAdapter } from "./adapters/CmcAdapter.js";
-import { StubPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
-import { StubPythAdapter } from "./adapters/PythAdapter.js";
-import { StubTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
+import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
+import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
+import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { inspect, tick } from "./app.js";
@@ -10,9 +10,9 @@ import { inspect, tick } from "./app.js";
 function makeDependencies(config: AppConfig) {
   return {
     cmc: new StubCmcAdapter(),
-    pyth: new StubPythAdapter(),
-    predictFun: new StubPredictFunAdapter(),
-    twak: new StubTrustWalletAgentKitAdapter(config),
+    pyth: new HistoryPythAdapter(config),
+    predictFun: new RestPredictFunAdapter(config),
+    twak: new EnvTrustWalletAgentKitAdapter(config),
     strategy: new NoopStrategySkill(),
     repository: new NoopSqliteRunRepository(config.databasePath)
   };
