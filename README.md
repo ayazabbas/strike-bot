@@ -77,6 +77,7 @@ PYTH_HISTORY_SYMBOL=Crypto.BTC/USD
 PYTH_HISTORY_LOOKBACK_MINUTES=60
 PREDICT_FUN_BASE_URL=https://api.predict.fun
 PREDICT_FUN_API_KEY=
+PREDICT_FUN_API_KEY_FILE=~/.pfkey
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
 TWAK_ACCESS_ID=
@@ -90,6 +91,8 @@ LIVE_TRADING_APPROVED=false
 ```
 
 If a wallet private key is ever needed for local development fallback, it must come from an environment variable or untracked local secret file outside the repository. Prefer TWAK-backed signing for hackathon alignment.
+
+For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file outside this repository. When `PREDICT_FUN_API_KEY` is not set, the bot reads `PREDICT_FUN_API_KEY_FILE`; if that variable is also unset, it uses `~/.pfkey` only when the file exists. The key is used only for request headers and is not printed in inspect or tick output.
 
 ## Expected initial commands
 

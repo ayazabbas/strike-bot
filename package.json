@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "inspect": "tsx src/cli.ts inspect",
-    "tick": "tsx src/cli.ts tick",
+    "inspect": "node --import tsx src/cli.ts inspect",
+    "tick": "node --import tsx src/cli.ts tick",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

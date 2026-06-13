@@ -106,10 +106,11 @@ function mapPredictFunMarket(item: UnknownRecord, capturedAt: Date): PredictFunM
     .filter(Boolean)
     .join(" ");
   const asset = normalizeAsset(firstString(item, ["asset", "baseAsset", "underlying", "symbol", "ticker"]), text);
-  const intervalMinutes = normalizeIntervalMinutes(item, text);
   const directions = normalizeDirections(item, text);
 
   const startsAt = firstDate(item, ["startsAt", "startTime", "start_time", "openTime", "open_time", "startDate"], capturedAt);
+  const explicitClosesAt = firstDateOptional(item, ["closesAt", "closeTime", "close_time", "endTime", "end_time", "expirationTime", "expiresAt"]);
+  const intervalMinutes = normalizeIntervalMinutes(item, text, startsAt, explicitClosesAt);
   const closesAt = firstDate(
     item,
     ["closesAt", "closeTime", "close_time", "endTime", "end_time", "expirationTime", "expiresAt"],
@@ -148,18 +149,38 @@ function normalizeAsset(value: string | undefined, text: string): string {
   return candidate ?? "UNKNOWN";
 }
 
-function normalizeIntervalMinutes(item: UnknownRecord, text: string): number {
+function normalizeIntervalMinutes(item: UnknownRecord, text: string, startsAt: Date, closesAt: Date | undefined): number {
   const direct = firstNumber(item, ["intervalMinutes", "interval_minutes", "durationMinutes", "duration_minutes", "resolution"]);
   if (direct && direct > 0) {
     return direct;
   }
 
-  const timeframe = firstString(item, ["interval", "timeframe", "duration"]);
-  const candidate = timeframe ?? text;
-  if (/\b5\s*(m|min|minute|minutes)\b/i.test(candidate)) {
+  const timeframe = firstString(item, ["interval", "timeframe", "duration", "resolution"]);
+  const parsedTimeframe = timeframe ? parseIntervalText(timeframe) : undefined;
+  if (parsedTimeframe) {
+    return parsedTimeframe;
+  }
+
+  if (closesAt && closesAt.getTime() > startsAt.getTime()) {
+    const diffMinutes = (closesAt.getTime() - startsAt.getTime()) / 60_000;
+    if (Number.isInteger(diffMinutes) && diffMinutes > 0) {
+      return diffMinutes;
+    }
+  }
+
+  const parsedText = parseIntervalText(text);
+  if (parsedText) {
+    return parsedText;
+  }
+
+  return 0;
+}
+
+function parseIntervalText(value: string): number | undefined {
+  if (/\b5\s*(?:m|min|mins|minute|minutes)\b/i.test(value) || /\b5-minute\b/i.test(value)) {
     return 5;
   }
-  return 0;
+  return undefined;
 }
 
 function normalizeDirections(item: UnknownRecord, text: string): readonly MarketDirection[] {
@@ -215,6 +236,10 @@ function firstNumber(item: UnknownRecord, keys: string[]): number | undefined {
 }
 
 function firstDate(item: UnknownRecord, keys: string[], fallback: Date): Date {
+  return firstDateOptional(item, keys) ?? fallback;
+}
+
+function firstDateOptional(item: UnknownRecord, keys: string[]): Date | undefined {
   for (const key of keys) {
     const value = item[key];
     const date = parseDate(value);
@@ -222,7 +247,7 @@ function firstDate(item: UnknownRecord, keys: string[], fallback: Date): Date {
       return date;
     }
   }
-  return fallback;
+  return undefined;
 }
 
 function parseDate(value: unknown): Date | undefined {
