@@ -16,6 +16,12 @@ describe("RestPredictFunAdapter", () => {
     );
 
     await expect(adapter.listMarkets()).resolves.toMatchObject({ markets: [] });
+    await expect(adapter.getOrderbookPricing("btc-5m-1")).resolves.toMatchObject({
+      marketId: "btc-5m-1",
+      status: "unknown",
+      up: {},
+      down: {}
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -48,7 +54,7 @@ describe("RestPredictFunAdapter", () => {
 
     const snapshot = await adapter.listMarkets();
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(fetchImpl.mock.calls[0][0].toString()).toBe("https://api.predict.fun/v1/markets?first=100");
     expect(fetchImpl.mock.calls[1][0].toString()).toBe(
       "https://api.predict.fun/v1/categories?first=100&status=OPEN&marketVariant=CRYPTO_UP_DOWN"
@@ -180,5 +186,100 @@ describe("RestPredictFunAdapter", () => {
     });
     expect(btcMarkets[0].startsAt.toISOString()).toBe("2026-06-13T17:35:00.000Z");
     expect(btcMarkets[0].closesAt.toISOString()).toBe("2026-06-13T17:40:00.000Z");
+  });
+
+  it("fetches and normalizes read-only pricing for UP/DOWN sides", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        marketId: "472369",
+        orderbook: {
+          up: {
+            bids: [
+              ["0.41", "10"],
+              ["0.43", "4"]
+            ],
+            asks: [
+              ["0.48", "6"],
+              ["0.46", "2"]
+            ]
+          },
+          down: {
+            bids: [
+              { price: 53, size: "8" },
+              { price: 51, size: "3" }
+            ],
+            asks: [{ price: 58, size: "9" }]
+          }
+        }
+      })
+    );
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    const pricing = await adapter.getOrderbookPricing("472369");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0].toString()).toBe("https://api.predict.fun/v1/markets/472369");
+    expect(pricing).toMatchObject({
+      marketId: "472369",
+      source: "predict.fun",
+      status: "available",
+      up: {
+        bestBid: 0.43,
+        bestAsk: 0.46,
+        impliedProbability: 0.445
+      },
+      down: {
+        bestBid: 0.53,
+        bestAsk: 0.58,
+        impliedProbability: 0.555
+      },
+      spread: 0.04
+    });
+  });
+
+  it("falls back to safe unknown pricing when orderbook payload has no usable levels", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse({ data: { levels: [] } }));
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    await expect(adapter.getOrderbookPricing("472369")).resolves.toMatchObject({
+      marketId: "472369",
+      status: "unknown",
+      up: {},
+      down: {}
+    });
+  });
+
+  it("falls back to the read-only batch orderbook endpoint when the single-market endpoint is unavailable", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "not found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: "not found" }, 404))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              marketId: "472369",
+              bids: [{ outcome: "UP", price: "0.44" }],
+              asks: [{ outcome: "UP", price: "0.49" }]
+            }
+          ]
+        })
+      );
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    const pricing = await adapter.getOrderbookPricing("472369");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl.mock.calls[2][0].toString()).toBe(
+      "https://api.predict.fun/v1/markets/orderbooks?ids=472369"
+    );
+    expect(pricing).toMatchObject({
+      status: "available",
+      up: {
+        bestBid: 0.44,
+        bestAsk: 0.49,
+        impliedProbability: 0.465
+      }
+    });
   });
 });

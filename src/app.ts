@@ -5,7 +5,7 @@ import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { RunRepository } from "./storage/RunRepository.js";
 import type { StrategySkill } from "./strategy/StrategySkill.js";
-import { filterBtcFiveMinuteMarkets } from "./domain/marketFilter.js";
+import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
 import { PaperExecutor } from "./execution/PaperExecutor.js";
 
@@ -26,6 +26,10 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
     dependencies.twak.checkReadiness()
   ]);
   const btcFiveMinuteMarkets = filterBtcFiveMinuteMarkets(marketSnapshot.markets);
+  const selectedMarket = selectNearestTradableBtcFiveMinuteMarket(marketSnapshot.markets, {
+    minSecondsBeforeClose: config.predictFunMinSecondsBeforeClose
+  });
+  const pricing = selectedMarket ? await dependencies.predictFun.getOrderbookPricing(selectedMarket.id) : undefined;
 
   return {
     mode: config.runMode,
@@ -33,8 +37,10 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
     candle,
     markets: {
       total: marketSnapshot.markets.length,
-      btcFiveMinuteUpDown: btcFiveMinuteMarkets.length
+      btcFiveMinuteUpDown: btcFiveMinuteMarkets.length,
+      selected: formatSelectedMarket(selectedMarket)
     },
+    pricing: pricing ?? null,
     twak,
     safety: {
       signing: false,
@@ -52,6 +58,10 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
   await dependencies.repository.recordMarketSnapshot(run.id, marketSnapshot);
 
   const markets = filterBtcFiveMinuteMarkets(marketSnapshot.markets);
+  const selectedMarket = selectNearestTradableBtcFiveMinuteMarket(marketSnapshot.markets, {
+    minSecondsBeforeClose: config.predictFunMinSecondsBeforeClose
+  });
+  const pricing = selectedMarket ? await dependencies.predictFun.getOrderbookPricing(selectedMarket.id) : undefined;
   const decision =
     mode === "inspect"
       ? {
@@ -94,10 +104,25 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     decision,
     risk,
     execution,
+    market: formatSelectedMarket(selectedMarket),
+    pricing: pricing ?? null,
     twak,
     safety: {
       signing: false,
       broadcasting: false
     }
+  };
+}
+
+function formatSelectedMarket(selected: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>) {
+  if (!selected) {
+    return null;
+  }
+  return {
+    id: selected.id,
+    categorySlug: selected.categorySlug,
+    startsAt: selected.startsAt,
+    closesAt: selected.closesAt,
+    timeRemainingSeconds: selected.timeRemainingSeconds
   };
 }

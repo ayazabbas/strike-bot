@@ -17,6 +17,7 @@ export interface PredictFunMarket {
   readonly asset: string;
   readonly intervalMinutes: number;
   readonly directions: readonly MarketDirection[];
+  readonly categorySlug?: string;
   readonly startsAt: Date;
   readonly closesAt: Date;
   readonly resolvesAt: Date;
@@ -28,6 +29,31 @@ export interface BtcFiveMinuteMarket extends PredictFunMarket {
   readonly asset: AssetSymbol;
   readonly intervalMinutes: 5;
   readonly directions: readonly ["UP", "DOWN"];
+}
+
+export interface SelectedBtcFiveMinuteMarket {
+  readonly id: string;
+  readonly categorySlug?: string;
+  readonly startsAt: Date;
+  readonly closesAt: Date;
+  readonly timeRemainingSeconds: number;
+  readonly market: BtcFiveMinuteMarket;
+}
+
+export interface MarketSidePricing {
+  readonly bestBid?: number;
+  readonly bestAsk?: number;
+  readonly impliedProbability?: number;
+}
+
+export interface MarketPricing {
+  readonly marketId: string;
+  readonly capturedAt: Date;
+  readonly source: "predict.fun";
+  readonly status: "available" | "unknown";
+  readonly up: MarketSidePricing;
+  readonly down: MarketSidePricing;
+  readonly spread?: number;
 }
 
 export interface MarketSnapshot {

@@ -78,6 +78,7 @@ PYTH_HISTORY_LOOKBACK_MINUTES=60
 PREDICT_FUN_BASE_URL=https://api.predict.fun
 PREDICT_FUN_API_KEY=
 PREDICT_FUN_API_KEY_FILE=~/.pfkey
+PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
 TWAK_ACCESS_ID=
@@ -94,6 +95,8 @@ If a wallet private key is ever needed for local development fallback, it must c
 
 For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file outside this repository. When `PREDICT_FUN_API_KEY` is not set, the bot reads `PREDICT_FUN_API_KEY_FILE`; if that variable is also unset, it uses `~/.pfkey` only when the file exists. The key is used only for request headers and is not printed in inspect or tick output.
 
+`PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE` controls the minimum time remaining for BTC 5-minute UP/DOWN market selection. The default is 60 seconds; markets that are closed, resolved, or already inside that closing window are ignored. If predict.fun marks an upcoming category as tradable/open, it can be selected before its price window starts.
+
 ## Expected initial commands
 
 Once implemented:
@@ -109,7 +112,7 @@ RUN_MODE=dry_run npm run tick
 
 Expected early behavior:
 
-- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, and TWAK readiness.
+- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, and TWAK readiness.
 - `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` until strategy work starts.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, and `LIVE_TRADING_APPROVED=true` is explicitly set.
 
