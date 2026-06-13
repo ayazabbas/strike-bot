@@ -22,27 +22,37 @@ export class RestPredictFunAdapter implements PredictFunAdapter {
     }
 
     try {
-      const url = new URL("/v1/markets", this.config.predictFunBaseUrl);
-      const response = await this.fetchImpl(url, {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-          "x-api-key": this.config.predictFunApiKey
-        }
-      });
+      const [marketPayload, categoryPayload] = await Promise.all([
+        this.fetchJson("/v1/markets?first=100"),
+        this.fetchJson("/v1/categories?first=100&status=OPEN&marketVariant=CRYPTO_UP_DOWN")
+      ]);
+      const marketItems = extractMarketItems(marketPayload);
+      const categoryMarketItems = extractCategoryMarketItems(categoryPayload);
 
-      if (!response.ok) {
-        return { capturedAt, markets: [] };
-      }
-
-      const payload = (await response.json()) as unknown;
       return {
         capturedAt,
-        markets: extractMarketItems(payload).flatMap((item) => mapPredictFunMarket(item, capturedAt))
+        markets: dedupeMarkets([...marketItems, ...categoryMarketItems].flatMap((item) => mapPredictFunMarket(item, capturedAt)))
       };
     } catch {
       return { capturedAt, markets: [] };
     }
+  }
+
+  private async fetchJson(path: string): Promise<unknown> {
+    const url = new URL(path, this.config.predictFunBaseUrl);
+    const response = await this.fetchImpl(url, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "x-api-key": this.config.predictFunApiKey ?? ""
+      }
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    return response.json() as Promise<unknown>;
   }
 }
 
@@ -96,24 +106,56 @@ function extractMarketItems(payload: unknown): UnknownRecord[] {
   return [];
 }
 
+function extractCategoryMarketItems(payload: unknown): UnknownRecord[] {
+  return extractMarketItems(payload).flatMap((category) => {
+    if (!Array.isArray(category["markets"])) {
+      return [];
+    }
+
+    return category["markets"].filter(isRecord).map((market) => ({
+      ...market,
+      categorySlug: firstString(market, ["categorySlug", "category_slug"]) ?? firstString(category, ["slug", "categorySlug"]),
+      categoryStatus: firstString(category, ["status"]),
+      categoryTitle: firstString(category, ["title", "shortTitle"]),
+      categoryStartsAt: firstString(category, ["startsAt", "startTime", "start_time"]),
+      categoryEndsAt: firstString(category, ["endsAt", "endTime", "end_time"]),
+      startsAt: firstString(market, ["startsAt", "startTime", "start_time"]) ?? firstString(category, ["startsAt", "startTime", "start_time"]),
+      endsAt: firstString(market, ["endsAt", "endTime", "end_time"]) ?? firstString(category, ["endsAt", "endTime", "end_time"])
+    }));
+  });
+}
+
 function mapPredictFunMarket(item: UnknownRecord, capturedAt: Date): PredictFunMarket[] {
   const id = firstString(item, ["id", "marketId", "market_id", "slug", "address"]);
   if (!id) {
     return [];
   }
 
-  const text = [firstString(item, ["title", "name", "question", "description"]), firstString(item, ["symbol", "asset", "underlying", "ticker"])]
+  const text = [
+    firstString(item, ["title", "name", "question", "description", "categoryTitle", "categorySlug", "marketVariant"]),
+    firstString(item, ["symbol", "asset", "underlying", "ticker"])
+  ]
     .filter(Boolean)
     .join(" ");
   const asset = normalizeAsset(firstString(item, ["asset", "baseAsset", "underlying", "symbol", "ticker"]), text);
   const directions = normalizeDirections(item, text);
 
-  const startsAt = firstDate(item, ["startsAt", "startTime", "start_time", "openTime", "open_time", "startDate"], capturedAt);
-  const explicitClosesAt = firstDateOptional(item, ["closesAt", "closeTime", "close_time", "endTime", "end_time", "expirationTime", "expiresAt"]);
+  const startsAt = firstDate(item, ["startsAt", "startTime", "start_time", "openTime", "open_time", "startDate", "categoryStartsAt"], capturedAt);
+  const explicitClosesAt = firstDateOptional(item, [
+    "closesAt",
+    "closeTime",
+    "close_time",
+    "endsAt",
+    "endTime",
+    "end_time",
+    "expirationTime",
+    "expiresAt",
+    "categoryEndsAt"
+  ]);
   const intervalMinutes = normalizeIntervalMinutes(item, text, startsAt, explicitClosesAt);
   const closesAt = firstDate(
     item,
-    ["closesAt", "closeTime", "close_time", "endTime", "end_time", "expirationTime", "expiresAt"],
+    ["closesAt", "closeTime", "close_time", "endsAt", "endTime", "end_time", "expirationTime", "expiresAt", "categoryEndsAt"],
     new Date(startsAt.getTime() + intervalMinutes * 60 * 1000)
   );
   const resolvesAt = firstDate(
@@ -133,7 +175,7 @@ function mapPredictFunMarket(item: UnknownRecord, capturedAt: Date): PredictFunM
       closesAt,
       resolvesAt,
       liquidityUsd: firstNumber(item, ["liquidityUsd", "liquidity_usd", "liquidity", "volumeUsd", "volume_usd"]),
-      status: normalizeStatus(firstString(item, ["status", "state"]))
+      status: normalizeStatus(firstString(item, ["tradingStatus", "trading_status", "status", "state", "categoryStatus"]))
     }
   ];
 }
@@ -143,7 +185,7 @@ function normalizeAsset(value: string | undefined, text: string): string {
   if (candidate?.includes("BTC") || candidate?.includes("BITCOIN")) {
     return "BTC";
   }
-  if (/\b(BTC|BITCOIN|CRYPTO\.BTC\/USD)\b/i.test(text)) {
+  if (/\b(BTC|BITCOIN|CRYPTO\.BTC\/USD|BTC\/USDT)\b/i.test(text)) {
     return "BTC";
   }
   return candidate ?? "UNKNOWN";
@@ -178,6 +220,9 @@ function normalizeIntervalMinutes(item: UnknownRecord, text: string, startsAt: D
 
 function parseIntervalText(value: string): number | undefined {
   if (/\b5\s*(?:m|min|mins|minute|minutes)\b/i.test(value) || /\b5-minute\b/i.test(value)) {
+    return 5;
+  }
+  if (/btc-updown-5m-/i.test(value) || /CRYPTO_UP_DOWN/i.test(value)) {
     return 5;
   }
   return undefined;
@@ -273,6 +318,14 @@ function arrayStrings(value: unknown): string[] {
   return value
     .map((item) => (typeof item === "string" ? item : isRecord(item) ? firstString(item, ["name", "label", "title"]) : undefined))
     .filter((item): item is string => Boolean(item));
+}
+
+function dedupeMarkets(markets: PredictFunMarket[]): PredictFunMarket[] {
+  const byId = new Map<string, PredictFunMarket>();
+  for (const market of markets) {
+    byId.set(market.id, market);
+  }
+  return [...byId.values()];
 }
 
 function isRecord(value: unknown): value is UnknownRecord {

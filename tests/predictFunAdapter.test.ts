@@ -3,6 +3,10 @@ import { loadConfig } from "../src/config.js";
 import { RestPredictFunAdapter } from "../src/adapters/PredictFunAdapter.js";
 import { filterBtcFiveMinuteMarkets } from "../src/domain/marketFilter.js";
 
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), { status });
+}
+
 describe("RestPredictFunAdapter", () => {
   it("does not call the network when the predict.fun API key is absent", async () => {
     const fetchImpl = vi.fn();
@@ -16,9 +20,10 @@ describe("RestPredictFunAdapter", () => {
   });
 
   it("sends x-api-key and maps plausible market payloads safely", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
           markets: [
             {
               marketId: "btc-5m-1",
@@ -33,10 +38,9 @@ describe("RestPredictFunAdapter", () => {
               status: "open"
             }
           ]
-        }),
-        { status: 200 }
+        })
       )
-    );
+      .mockResolvedValueOnce(jsonResponse({ data: [] }));
     const adapter = new RestPredictFunAdapter(
       loadConfig({ PREDICT_FUN_API_KEY: "test-key", PREDICT_FUN_BASE_URL: "https://api.predict.fun" }),
       fetchImpl
@@ -44,8 +48,11 @@ describe("RestPredictFunAdapter", () => {
 
     const snapshot = await adapter.listMarkets();
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][0].toString()).toBe("https://api.predict.fun/v1/markets");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][0].toString()).toBe("https://api.predict.fun/v1/markets?first=100");
+    expect(fetchImpl.mock.calls[1][0].toString()).toBe(
+      "https://api.predict.fun/v1/categories?first=100&status=OPEN&marketVariant=CRYPTO_UP_DOWN"
+    );
     expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({ "x-api-key": "test-key" });
     expect(snapshot.markets).toHaveLength(1);
     expect(snapshot.markets[0]).toMatchObject({
@@ -67,9 +74,10 @@ describe("RestPredictFunAdapter", () => {
   });
 
   it("maps the live /v1/markets shape without treating BTC daily markets as 5-minute markets", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [
             {
               id: 123,
@@ -101,10 +109,9 @@ describe("RestPredictFunAdapter", () => {
               status: "RESOLVED"
             }
           ]
-        }),
-        { status: 200 }
+        })
       )
-    );
+      .mockResolvedValueOnce(jsonResponse({ data: [] }));
     const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
 
     const snapshot = await adapter.listMarkets();
@@ -129,5 +136,49 @@ describe("RestPredictFunAdapter", () => {
       status: "settled"
     });
     expect(filterBtcFiveMinuteMarkets(snapshot.markets).map((market) => market.id)).toEqual(["123"]);
+  });
+
+  it("maps BTC 5-minute crypto up/down markets nested under categories", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse({ data: [] })).mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          {
+            slug: "btc-updown-5m-1781372100",
+            title: "Bitcoin Up or Down - June 13, 1:35PM-1:40PM ET",
+            startsAt: "2026-06-13T17:35:00.000Z",
+            endsAt: "2026-06-13T17:40:00.000Z",
+            status: "OPEN",
+            marketVariant: "CRYPTO_UP_DOWN",
+            markets: [
+              {
+                id: 472369,
+                categorySlug: "btc-updown-5m-1781372100",
+                title: "Bitcoin Up or Down - June 13, 1:35PM-1:40PM ET",
+                question: "Bitcoin Up or Down - June 13, 1:35PM-1:40PM ET",
+                marketVariant: "CRYPTO_UP_DOWN",
+                outcomes: [{ name: "Up" }, { name: "Down" }],
+                status: "REGISTERED",
+                tradingStatus: "OPEN"
+              }
+            ]
+          }
+        ]
+      })
+    );
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    const snapshot = await adapter.listMarkets();
+    const btcMarkets = filterBtcFiveMinuteMarkets(snapshot.markets);
+
+    expect(btcMarkets).toHaveLength(1);
+    expect(btcMarkets[0]).toMatchObject({
+      id: "472369",
+      asset: "BTC",
+      intervalMinutes: 5,
+      directions: ["UP", "DOWN"],
+      status: "open"
+    });
+    expect(btcMarkets[0].startsAt.toISOString()).toBe("2026-06-13T17:35:00.000Z");
+    expect(btcMarkets[0].closesAt.toISOString()).toBe("2026-06-13T17:40:00.000Z");
   });
 });
