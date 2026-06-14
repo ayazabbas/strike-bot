@@ -20,7 +20,7 @@ Each row uses `schemaVersion: 1` and includes:
 - `strategyDecision`: original strategy output before risk/TWAK blocking
 - `decision`: final decision after safety/risk blocking
 - `pricing`: captured predict.fun bid/ask/implied probability for UP and DOWN plus spread
-- `strategyMetadata`: trigger name, elapsed minute, partial return bps, close location, fair threshold, max acceptable ask, ask price, edge
+- `strategyMetadata`: trigger name, elapsed minute, market start timing, Pyth candle/market start delta and tolerance, partial return bps, close location, fair threshold, max acceptable ask, ask price, edge
 - `pythCandle`: captured Pyth candle metadata and OHLCV fields
 - `risk`: approval and rejection reasons
 - `safety`: signing/broadcasting flags; paper rows should be `false`/`false`
@@ -28,6 +28,13 @@ Each row uses `schemaVersion: 1` and includes:
 - `settlement`: placeholders initialized as `unknown`/`null` and later enriched from official predict.fun market resolution
 
 No API keys, wallet material, raw environment variables, or signing secrets should be written to this journal.
+
+`MomentumStrategySkill` emits explicit no-trade reasons for start-time safety:
+
+- `market_not_started`: the selected predict.fun market exists but `decision.createdAt` is before `selectedMarket.startsAt`.
+- `candle_market_mismatch`: the latest Pyth candle `openTime` differs from `selectedMarket.startsAt` by more than `STRATEGY_CANDLE_START_TOLERANCE_SECONDS`, defaulting to 90 seconds.
+
+Rows include `marketStartsAt`, `candleOpenTime`, `candleStartDeltaSeconds`, `candleStartToleranceSeconds`, `marketStartDeltaSeconds`, and `secondsSinceMarketStart` in `strategyMetadata` when those fields are relevant.
 
 ## Settlement enrichment
 

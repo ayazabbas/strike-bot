@@ -17,7 +17,10 @@ function makeDependencies(config: AppConfig) {
     twak: new EnvTrustWalletAgentKitAdapter(config),
     strategy:
       config.strategySkill === "momentum"
-        ? new MomentumStrategySkill({ minEdge: config.strategyMinEdge })
+        ? new MomentumStrategySkill({
+            minEdge: config.strategyMinEdge,
+            candleStartToleranceSeconds: config.strategyCandleStartToleranceSeconds
+          })
         : new NoopStrategySkill(),
     repository: new NoopSqliteRunRepository(config.databasePath),
     paperJournal: new JsonlPaperJournal(config.paperJournalPath)

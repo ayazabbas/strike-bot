@@ -214,7 +214,13 @@ function normalizeMetadata(metadata: StrategyDecisionMetadata | undefined) {
     edge: metadata?.edge ?? null,
     elapsedMinutes: metadata?.elapsedMinutes ?? null,
     partialReturnBps: metadata?.partialReturnBps ?? null,
-    closeLocation: metadata?.closeLocation ?? null
+    closeLocation: metadata?.closeLocation ?? null,
+    marketStartsAt: metadata?.marketStartsAt ?? null,
+    candleOpenTime: metadata?.candleOpenTime ?? null,
+    candleStartDeltaSeconds: metadata?.candleStartDeltaSeconds ?? null,
+    candleStartToleranceSeconds: metadata?.candleStartToleranceSeconds ?? null,
+    marketStartDeltaSeconds: metadata?.marketStartDeltaSeconds ?? null,
+    secondsSinceMarketStart: metadata?.secondsSinceMarketStart ?? null
   };
 }
 

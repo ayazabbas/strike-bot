@@ -19,6 +19,7 @@ describe("config", () => {
     expect(config.predictFunMinSecondsBeforeClose).toBe(60);
     expect(config.strategySkill).toBe("noop");
     expect(config.strategyMinEdge).toBe(0.05);
+    expect(config.strategyCandleStartToleranceSeconds).toBe(90);
     expect(config.paperJournalPath).toBe("data/paper/trades.jsonl");
   });
 
@@ -29,6 +30,7 @@ describe("config", () => {
       PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE: "90",
       STRATEGY_SKILL: "momentum",
       STRATEGY_MIN_EDGE: "0.07",
+      STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
       PAPER_JOURNAL_PATH: "tmp/paper.jsonl"
     });
 
@@ -37,6 +39,7 @@ describe("config", () => {
     expect(config.predictFunMinSecondsBeforeClose).toBe(90);
     expect(config.strategySkill).toBe("momentum");
     expect(config.strategyMinEdge).toBe(0.07);
+    expect(config.strategyCandleStartToleranceSeconds).toBe(45);
     expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
   });
 

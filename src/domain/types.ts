@@ -9,7 +9,9 @@ export type DecisionReason =
   | "strategy_not_configured"
   | "market_not_supported"
   | "market_not_selected"
+  | "market_not_started"
   | "candle_unavailable"
+  | "candle_market_mismatch"
   | "signal_not_triggered"
   | "pricing_unavailable"
   | "price_above_threshold"
@@ -109,6 +111,12 @@ export interface StrategyDecisionMetadata {
   readonly elapsedMinutes?: number;
   readonly partialReturnBps?: number;
   readonly closeLocation?: number;
+  readonly marketStartsAt?: string;
+  readonly candleOpenTime?: string;
+  readonly candleStartDeltaSeconds?: number;
+  readonly candleStartToleranceSeconds?: number;
+  readonly marketStartDeltaSeconds?: number;
+  readonly secondsSinceMarketStart?: number;
 }
 
 export interface NoTradeDecision {

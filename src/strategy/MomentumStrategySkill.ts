@@ -7,6 +7,7 @@ export interface MomentumStrategyOptions {
   readonly maxDownCloseLocation?: number;
   readonly minEdge?: number;
   readonly notionalUsd?: number;
+  readonly candleStartToleranceSeconds?: number;
 }
 
 const DEFAULT_OPTIONS = {
@@ -14,7 +15,8 @@ const DEFAULT_OPTIONS = {
   minUpCloseLocation: 0.7,
   maxDownCloseLocation: 0.3,
   minEdge: 0.05,
-  notionalUsd: 1
+  notionalUsd: 1,
+  candleStartToleranceSeconds: 90
 } as const;
 
 const FAIR_THRESHOLDS: Record<number, Record<MarketDirection, number>> = {
@@ -44,21 +46,42 @@ export class MomentumStrategySkill implements StrategySkill {
       return this.noTrade("candle_unavailable", context, createdAt, selected.id);
     }
 
+    const startMetadata = marketStartMetadata(createdAt, selected.startsAt);
+    if (createdAt.getTime() < selected.startsAt.getTime()) {
+      return this.noTrade("market_not_started", context, createdAt, selected.id, startMetadata);
+    }
+
+    const candleMetadata = candleStartMetadata(
+      selected.startsAt,
+      latest.openTime,
+      this.options.candleStartToleranceSeconds
+    );
+    const baseMetadata: StrategyDecisionMetadata = {
+      ...startMetadata,
+      ...candleMetadata
+    };
+
+    const candleStartDeltaSeconds = round((latest.openTime.getTime() - selected.startsAt.getTime()) / 1000);
+    if (Math.abs(candleStartDeltaSeconds) > this.options.candleStartToleranceSeconds) {
+      return this.noTrade("candle_market_mismatch", context, createdAt, selected.id, baseMetadata);
+    }
+
     if (!context.pricing || context.pricing.status !== "available") {
-      return this.noTrade("pricing_unavailable", context, createdAt, selected.id);
+      return this.noTrade("pricing_unavailable", context, createdAt, selected.id, baseMetadata);
     }
 
     const elapsedMinutes = Math.floor((createdAt.getTime() - selected.startsAt.getTime()) / 60_000);
     const clampedElapsedMinutes = clamp(elapsedMinutes, 1, 4);
     const range = latest.high - latest.low;
     if (range <= 0 || latest.open <= 0) {
-      return this.noTrade("signal_not_triggered", context, createdAt, selected.id);
+      return this.noTrade("signal_not_triggered", context, createdAt, selected.id, baseMetadata);
     }
 
     const partialReturnBps = ((latest.close - latest.open) / latest.open) * 10_000;
     const closeLocation = (latest.close - latest.low) / range;
     const direction = triggerDirection(partialReturnBps, closeLocation, this.options);
-    const baseMetadata: StrategyDecisionMetadata = {
+    const signalMetadata: StrategyDecisionMetadata = {
+      ...baseMetadata,
       strategyName: this.name,
       triggerName: direction ? "momentum_continuation" : undefined,
       elapsedMinutes: clampedElapsedMinutes,
@@ -67,19 +90,19 @@ export class MomentumStrategySkill implements StrategySkill {
     };
 
     if (!direction) {
-      return this.noTrade("signal_not_triggered", context, createdAt, selected.id, baseMetadata);
+      return this.noTrade("signal_not_triggered", context, createdAt, selected.id, signalMetadata);
     }
 
     const askPrice = askForDirection(context.pricing, direction);
     if (askPrice === undefined) {
-      return this.noTrade("pricing_unavailable", context, createdAt, selected.id, baseMetadata);
+      return this.noTrade("pricing_unavailable", context, createdAt, selected.id, signalMetadata);
     }
 
     const fairThreshold = FAIR_THRESHOLDS[clampedElapsedMinutes]?.[direction];
     const maxAcceptableAsk = fairThreshold - this.options.minEdge;
     const edge = fairThreshold - askPrice;
     const metadata = {
-      ...baseMetadata,
+      ...signalMetadata,
       fairThreshold,
       maxAcceptableAsk: round(maxAcceptableAsk),
       askPrice,
@@ -143,4 +166,26 @@ function clamp(value: number, min: number, max: number): number {
 
 function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
+}
+
+function marketStartMetadata(createdAt: Date, marketStartsAt: Date): StrategyDecisionMetadata {
+  const marketStartDeltaSeconds = round((createdAt.getTime() - marketStartsAt.getTime()) / 1000);
+  return {
+    marketStartsAt: marketStartsAt.toISOString(),
+    marketStartDeltaSeconds,
+    secondsSinceMarketStart: marketStartDeltaSeconds >= 0 ? marketStartDeltaSeconds : undefined
+  };
+}
+
+function candleStartMetadata(
+  marketStartsAt: Date,
+  candleOpenTime: Date,
+  candleStartToleranceSeconds: number
+): StrategyDecisionMetadata {
+  return {
+    marketStartsAt: marketStartsAt.toISOString(),
+    candleOpenTime: candleOpenTime.toISOString(),
+    candleStartDeltaSeconds: round((candleOpenTime.getTime() - marketStartsAt.getTime()) / 1000),
+    candleStartToleranceSeconds
+  };
 }
