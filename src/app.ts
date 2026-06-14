@@ -70,7 +70,14 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
           runMode: mode,
           createdAt: new Date()
         }
-      : await dependencies.strategy.decide({ runMode: mode, macro, candle, markets });
+      : await dependencies.strategy.decide({
+          runMode: mode,
+          macro,
+          candle,
+          markets,
+          selectedMarket: selectedMarket ?? undefined,
+          pricing
+        });
 
   const risk = new RiskManager(config).evaluate(decision);
   await dependencies.repository.recordDecision(run.id, decision);

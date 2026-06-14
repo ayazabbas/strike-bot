@@ -9,7 +9,7 @@ Read `README.md` before making changes.
 - Target BNB Chain mainnet with small funds, but live execution must remain approval-gated.
 - Trust Wallet Agent Kit is a required integration target for dry-run/live execution paths where feasible.
 - Scope is BTC 5-minute UP/DOWN markets on predict.fun only.
-- Do not implement exact strategy logic yet; use a `NoopStrategySkill` placeholder until strategy work is explicitly requested.
+- Keep exact strategy logic deterministic, tested, and opt-in; default runtime should remain noop unless explicitly configured.
 
 ## Coding preferences
 

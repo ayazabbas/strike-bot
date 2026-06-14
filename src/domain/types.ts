@@ -7,6 +7,11 @@ export type DecisionReason =
   | "inspect_mode"
   | "strategy_not_configured"
   | "market_not_supported"
+  | "market_not_selected"
+  | "candle_unavailable"
+  | "signal_not_triggered"
+  | "pricing_unavailable"
+  | "price_above_threshold"
   | "risk_rejected"
   | "live_not_approved"
   | "twak_not_ready";
@@ -85,12 +90,25 @@ export interface BtcCandleMetadata {
   readonly stubbed: boolean;
 }
 
+export interface StrategyDecisionMetadata {
+  readonly strategyName?: string;
+  readonly triggerName?: string;
+  readonly fairThreshold?: number;
+  readonly maxAcceptableAsk?: number;
+  readonly askPrice?: number;
+  readonly edge?: number;
+  readonly elapsedMinutes?: number;
+  readonly partialReturnBps?: number;
+  readonly closeLocation?: number;
+}
+
 export interface NoTradeDecision {
   readonly action: "no_trade";
   readonly reason: DecisionReason;
   readonly marketId?: string;
   readonly runMode: RunMode;
   readonly createdAt: Date;
+  readonly metadata?: StrategyDecisionMetadata;
 }
 
 export interface EnterDecision {
@@ -100,6 +118,7 @@ export interface EnterDecision {
   readonly notionalUsd: number;
   readonly runMode: RunMode;
   readonly createdAt: Date;
+  readonly metadata?: StrategyDecisionMetadata;
 }
 
 export type StrategyDecision = NoTradeDecision | EnterDecision;

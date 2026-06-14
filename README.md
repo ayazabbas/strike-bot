@@ -10,7 +10,7 @@ Initial scope is intentionally narrow:
 - **Macro context:** CoinMarketCap.
 - **Low-timeframe OHLC/reference data:** Pyth Pro.
 - **Wallet/action layer:** Trust Wallet Agent Kit (TWAK) where feasible/required for hackathon alignment.
-- **Strategy:** not implemented yet. Build structure, data plumbing, risk gates, paper/dry-run/live execution shells, and logs first.
+- **Strategy:** default is the safe `NoopStrategySkill`; opt in to the Phase-1 momentum paper strategy with `STRATEGY_SKILL=momentum`.
 
 ## Current objective
 
@@ -19,7 +19,7 @@ Build the execution foundation before strategy work:
 1. Project scaffold and config validation.
 2. Domain types for BTC 5-minute prediction markets.
 3. Adapters for CMC, Pyth Pro, predict.fun, and Trust Wallet Agent Kit.
-4. Deterministic strategy interface with a `NoopStrategySkill` placeholder.
+4. Deterministic strategy interface with a `NoopStrategySkill` default and opt-in `MomentumStrategySkill` for paper research.
 5. Risk manager with hard safety gates.
 6. Paper mode and dry-run mode.
 7. Mainnet live mode guarded by explicit approval and small-fund limits.
@@ -79,6 +79,8 @@ PREDICT_FUN_BASE_URL=https://api.predict.fun
 PREDICT_FUN_API_KEY=
 PREDICT_FUN_API_KEY_FILE=~/.pfkey
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
+STRATEGY_SKILL=noop # noop|momentum
+STRATEGY_MIN_EDGE=0.05
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
 TWAK_ACCESS_ID=
@@ -113,7 +115,7 @@ RUN_MODE=dry_run npm run tick
 Expected early behavior:
 
 - `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, and TWAK readiness.
-- `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` until strategy work starts.
+- `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` by default; `STRATEGY_SKILL=momentum RUN_MODE=paper npm run tick` enables Phase-1 momentum paper decisions with fair-threshold/ask/edge metadata.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, and `LIVE_TRADING_APPROVED=true` is explicitly set.
 
 ## Initial architecture
@@ -141,7 +143,7 @@ SQLite logs + run reports
 ## Implementation notes for Codex
 
 - Keep the scope narrow: BTC 5-minute UP/DOWN markets on predict.fun only.
-- Build the structure and adapters first; do not invent strategy logic yet.
+- Keep strategy logic deterministic, test-backed, and opt-in; live execution remains approval-gated.
 - Use TypeScript/Node.js for the main bot.
 - Use Vitest or equivalent for tests.
 - Use `zod` or similar for config validation.

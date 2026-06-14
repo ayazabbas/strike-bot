@@ -1,0 +1,146 @@
+import type { DecisionReason, MarketDirection, MarketPricing, StrategyDecision, StrategyDecisionMetadata } from "../domain/types.js";
+import type { StrategyContext, StrategySkill } from "./StrategySkill.js";
+
+export interface MomentumStrategyOptions {
+  readonly minAbsReturnBps?: number;
+  readonly minUpCloseLocation?: number;
+  readonly maxDownCloseLocation?: number;
+  readonly minEdge?: number;
+  readonly notionalUsd?: number;
+}
+
+const DEFAULT_OPTIONS = {
+  minAbsReturnBps: 5,
+  minUpCloseLocation: 0.7,
+  maxDownCloseLocation: 0.3,
+  minEdge: 0.05,
+  notionalUsd: 1
+} as const;
+
+const FAIR_THRESHOLDS: Record<number, Record<MarketDirection, number>> = {
+  1: { UP: 0.7595, DOWN: 0.7733 },
+  2: { UP: 0.8248, DOWN: 0.8375 },
+  3: { UP: 0.8824, DOWN: 0.8786 },
+  4: { UP: 0.9201, DOWN: 0.9303 }
+};
+
+export class MomentumStrategySkill implements StrategySkill {
+  readonly name = "MomentumStrategySkill";
+  private readonly options: Required<MomentumStrategyOptions>;
+
+  constructor(options: MomentumStrategyOptions = {}, private readonly now: () => Date = () => new Date()) {
+    this.options = { ...DEFAULT_OPTIONS, ...options };
+  }
+
+  async decide(context: StrategyContext): Promise<StrategyDecision> {
+    const createdAt = this.now();
+    const selected = context.selectedMarket;
+    if (!selected) {
+      return this.noTrade("market_not_selected", context, createdAt);
+    }
+
+    const latest = context.candle.latestCandle;
+    if (context.candle.stubbed || !latest) {
+      return this.noTrade("candle_unavailable", context, createdAt, selected.id);
+    }
+
+    if (!context.pricing || context.pricing.status !== "available") {
+      return this.noTrade("pricing_unavailable", context, createdAt, selected.id);
+    }
+
+    const elapsedMinutes = Math.floor((createdAt.getTime() - selected.startsAt.getTime()) / 60_000);
+    const clampedElapsedMinutes = clamp(elapsedMinutes, 1, 4);
+    const range = latest.high - latest.low;
+    if (range <= 0 || latest.open <= 0) {
+      return this.noTrade("signal_not_triggered", context, createdAt, selected.id);
+    }
+
+    const partialReturnBps = ((latest.close - latest.open) / latest.open) * 10_000;
+    const closeLocation = (latest.close - latest.low) / range;
+    const direction = triggerDirection(partialReturnBps, closeLocation, this.options);
+    const baseMetadata: StrategyDecisionMetadata = {
+      strategyName: this.name,
+      triggerName: direction ? "momentum_continuation" : undefined,
+      elapsedMinutes: clampedElapsedMinutes,
+      partialReturnBps: round(partialReturnBps),
+      closeLocation: round(closeLocation)
+    };
+
+    if (!direction) {
+      return this.noTrade("signal_not_triggered", context, createdAt, selected.id, baseMetadata);
+    }
+
+    const askPrice = askForDirection(context.pricing, direction);
+    if (askPrice === undefined) {
+      return this.noTrade("pricing_unavailable", context, createdAt, selected.id, baseMetadata);
+    }
+
+    const fairThreshold = FAIR_THRESHOLDS[clampedElapsedMinutes]?.[direction];
+    const maxAcceptableAsk = fairThreshold - this.options.minEdge;
+    const edge = fairThreshold - askPrice;
+    const metadata = {
+      ...baseMetadata,
+      fairThreshold,
+      maxAcceptableAsk: round(maxAcceptableAsk),
+      askPrice,
+      edge: round(edge)
+    };
+
+    if (askPrice > maxAcceptableAsk) {
+      return this.noTrade("price_above_threshold", context, createdAt, selected.id, metadata);
+    }
+
+    return {
+      action: "enter",
+      marketId: selected.id,
+      direction,
+      notionalUsd: this.options.notionalUsd,
+      runMode: context.runMode,
+      createdAt,
+      metadata
+    };
+  }
+
+  private noTrade(
+    reason: DecisionReason,
+    context: StrategyContext,
+    createdAt: Date,
+    marketId?: string,
+    metadata?: StrategyDecisionMetadata
+  ): StrategyDecision {
+    return {
+      action: "no_trade",
+      reason,
+      marketId,
+      runMode: context.runMode,
+      createdAt,
+      metadata: metadata ? { strategyName: this.name, ...metadata } : { strategyName: this.name }
+    };
+  }
+}
+
+function triggerDirection(
+  partialReturnBps: number,
+  closeLocation: number,
+  options: Required<MomentumStrategyOptions>
+): MarketDirection | undefined {
+  if (partialReturnBps >= options.minAbsReturnBps && closeLocation >= options.minUpCloseLocation) {
+    return "UP";
+  }
+  if (partialReturnBps <= -options.minAbsReturnBps && closeLocation <= options.maxDownCloseLocation) {
+    return "DOWN";
+  }
+  return undefined;
+}
+
+function askForDirection(pricing: MarketPricing, direction: MarketDirection): number | undefined {
+  return direction === "UP" ? pricing.up.bestAsk : pricing.down.bestAsk;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}

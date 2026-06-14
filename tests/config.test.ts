@@ -17,18 +17,24 @@ describe("config", () => {
     expect(config.pythHistorySymbol).toBe("Crypto.BTC/USD");
     expect(config.pythHistoryLookbackMinutes).toBe(60);
     expect(config.predictFunMinSecondsBeforeClose).toBe(60);
+    expect(config.strategySkill).toBe("noop");
+    expect(config.strategyMinEdge).toBe(0.05);
   });
 
   it("loads read-only adapter settings from environment names", () => {
     const config = loadConfig({
       PREDICT_FUN_API_KEY: "predict-test-key",
       PYTH_HISTORY_LOOKBACK_MINUTES: "30",
-      PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE: "90"
+      PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE: "90",
+      STRATEGY_SKILL: "momentum",
+      STRATEGY_MIN_EDGE: "0.07"
     });
 
     expect(config.predictFunApiKey).toBe("predict-test-key");
     expect(config.pythHistoryLookbackMinutes).toBe(30);
     expect(config.predictFunMinSecondsBeforeClose).toBe(90);
+    expect(config.strategySkill).toBe("momentum");
+    expect(config.strategyMinEdge).toBe(0.07);
   });
 
   it("loads predict.fun API key from an external file path", () => {
