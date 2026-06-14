@@ -166,47 +166,43 @@ describe("MomentumStrategySkill", () => {
     });
   });
 
-  it("skips weak early-window edge using the higher early edge requirement", async () => {
-    const strategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:00:45.000Z"));
+  it("scales the required edge continuously lower as market time elapses", async () => {
+    const earlyStrategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:00:45.000Z"));
+    const lateStrategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:04:40.000Z"));
 
-    const decision = await strategy.decide(
+    const earlyDecision = await earlyStrategy.decide(
       context({ pricing: pricing({ up: { bestBid: 0.67, bestAsk: 0.70, impliedProbability: 0.685 } }) })
     );
+    const lateDecision = await lateStrategy.decide(
+      context({ pricing: pricing({ up: { bestBid: 0.84, bestAsk: 0.86, impliedProbability: 0.85 } }) })
+    );
 
-    expect(decision).toMatchObject({
+    expect(earlyDecision).toMatchObject({
       action: "no_trade",
       reason: "price_above_threshold",
       marketId: "472571",
       runMode: "paper"
     });
-    expect(decision.metadata).toMatchObject({
+    expect(earlyDecision.metadata).toMatchObject({
       elapsedSeconds: 45,
-      minRequiredEdge: 0.08,
-      edgeBucket: "0-60s",
+      minRequiredEdge: 0.0725,
+      edgeScale: "continuous_linear",
       askPrice: 0.7,
-      maxAcceptableAsk: 0.6795
+      maxAcceptableAsk: 0.687
     });
-  });
 
-  it("allows the same absolute edge late in the window using the lower late edge requirement", async () => {
-    const strategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:04:40.000Z"));
-
-    const decision = await strategy.decide(
-      context({ pricing: pricing({ up: { bestBid: 0.84, bestAsk: 0.86, impliedProbability: 0.85 } }) })
-    );
-
-    expect(decision).toMatchObject({
+    expect(lateDecision).toMatchObject({
       action: "enter",
       marketId: "472571",
       direction: "UP",
       runMode: "paper"
     });
-    expect(decision.metadata).toMatchObject({
+    expect(lateDecision.metadata).toMatchObject({
       elapsedSeconds: 280,
-      minRequiredEdge: 0.03,
-      edgeBucket: "270s+",
+      minRequiredEdge: 0.0333,
+      edgeScale: "continuous_linear",
       askPrice: 0.86,
-      maxAcceptableAsk: 0.8901,
+      maxAcceptableAsk: 0.8868,
       edge: 0.0601
     });
   });

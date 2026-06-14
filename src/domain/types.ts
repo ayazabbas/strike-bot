@@ -108,7 +108,7 @@ export interface StrategyDecisionMetadata {
   readonly maxAcceptableAsk?: number;
   readonly askPrice?: number;
   readonly edge?: number;
-  readonly edgeBucket?: string;
+  readonly edgeScale?: string;
   readonly minRequiredEdge?: number;
   readonly elapsedSeconds?: number;
   readonly elapsedMinutes?: number;

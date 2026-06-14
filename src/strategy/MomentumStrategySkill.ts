@@ -1,10 +1,10 @@
 import type { DecisionReason, MarketDirection, MarketPricing, StrategyDecision, StrategyDecisionMetadata } from "../domain/types.js";
 import type { StrategyContext, StrategySkill } from "./StrategySkill.js";
 
-export interface MomentumEdgeBucket {
-  readonly maxElapsedSeconds?: number;
-  readonly minEdge: number;
-  readonly label: string;
+export interface MomentumEdgeScale {
+  readonly startEdge: number;
+  readonly endEdge: number;
+  readonly durationSeconds: number;
 }
 
 export interface MomentumStrategyOptions {
@@ -12,24 +12,23 @@ export interface MomentumStrategyOptions {
   readonly minUpCloseLocation?: number;
   readonly maxDownCloseLocation?: number;
   readonly minEdge?: number;
-  readonly minEdgeSchedule?: readonly MomentumEdgeBucket[];
+  readonly edgeScale?: MomentumEdgeScale;
   readonly notionalUsd?: number;
   readonly candleStartToleranceSeconds?: number;
 }
 
-const DEFAULT_EDGE_SCHEDULE: readonly MomentumEdgeBucket[] = [
-  { maxElapsedSeconds: 60, minEdge: 0.08, label: "0-60s" },
-  { maxElapsedSeconds: 180, minEdge: 0.06, label: "60-180s" },
-  { maxElapsedSeconds: 270, minEdge: 0.04, label: "180-270s" },
-  { minEdge: 0.03, label: "270s+" }
-];
+const DEFAULT_EDGE_SCALE: MomentumEdgeScale = {
+  startEdge: 0.08,
+  endEdge: 0.03,
+  durationSeconds: 300
+};
 
 const DEFAULT_OPTIONS = {
   minAbsReturnBps: 5,
   minUpCloseLocation: 0.7,
   maxDownCloseLocation: 0.3,
   minEdge: 0.05,
-  minEdgeSchedule: DEFAULT_EDGE_SCHEDULE,
+  edgeScale: DEFAULT_EDGE_SCALE,
   notionalUsd: 1,
   candleStartToleranceSeconds: 90
 } as const;
@@ -43,15 +42,15 @@ const FAIR_THRESHOLDS: Record<number, Record<MarketDirection, number>> = {
 
 export class MomentumStrategySkill implements StrategySkill {
   readonly name = "MomentumStrategySkill";
-  private readonly options: Required<Omit<MomentumStrategyOptions, "minEdgeSchedule">> & {
-    readonly minEdgeSchedule?: readonly MomentumEdgeBucket[];
+  private readonly options: Required<Omit<MomentumStrategyOptions, "edgeScale">> & {
+    readonly edgeScale?: MomentumEdgeScale;
   };
 
   constructor(options: MomentumStrategyOptions = {}, private readonly now: () => Date = () => new Date()) {
     this.options = {
       ...DEFAULT_OPTIONS,
       ...options,
-      minEdgeSchedule: options.minEdge !== undefined && options.minEdgeSchedule === undefined ? undefined : (options.minEdgeSchedule ?? DEFAULT_EDGE_SCHEDULE)
+      edgeScale: options.minEdge !== undefined && options.edgeScale === undefined ? undefined : (options.edgeScale ?? DEFAULT_EDGE_SCALE)
     };
   }
 
@@ -121,15 +120,15 @@ export class MomentumStrategySkill implements StrategySkill {
     }
 
     const fairThreshold = FAIR_THRESHOLDS[clampedElapsedMinutes]?.[direction];
-    const edgeBucket = edgeBucketForElapsedSeconds(elapsedSeconds, this.options);
-    const minRequiredEdge = edgeBucket.minEdge;
+    const edgeRequirement = minEdgeForElapsedSeconds(elapsedSeconds, this.options);
+    const minRequiredEdge = edgeRequirement.minEdge;
     const maxAcceptableAsk = fairThreshold - minRequiredEdge;
     const edge = fairThreshold - askPrice;
     const metadata = {
       ...signalMetadata,
       elapsedSeconds,
-      edgeBucket: edgeBucket.label,
-      minRequiredEdge,
+      edgeScale: edgeRequirement.scale,
+      minRequiredEdge: round(minRequiredEdge),
       fairThreshold,
       maxAcceptableAsk: round(maxAcceptableAsk),
       askPrice,
@@ -183,16 +182,16 @@ function triggerDirection(
   return undefined;
 }
 
-function edgeBucketForElapsedSeconds(
+function minEdgeForElapsedSeconds(
   elapsedSeconds: number,
-  options: { readonly minEdge: number; readonly minEdgeSchedule?: readonly MomentumEdgeBucket[] }
-): MomentumEdgeBucket {
-  for (const bucket of options.minEdgeSchedule ?? []) {
-    if (bucket.maxElapsedSeconds === undefined || elapsedSeconds <= bucket.maxElapsedSeconds) {
-      return bucket;
-    }
+  options: { readonly minEdge: number; readonly edgeScale?: MomentumEdgeScale }
+): { readonly minEdge: number; readonly scale: string } {
+  if (!options.edgeScale) {
+    return { minEdge: options.minEdge, scale: "uniform" };
   }
-  return { minEdge: options.minEdge, label: "uniform" };
+  const elapsedRatio = clamp(elapsedSeconds / options.edgeScale.durationSeconds, 0, 1);
+  const scaledEdge = options.edgeScale.startEdge - (options.edgeScale.startEdge - options.edgeScale.endEdge) * elapsedRatio;
+  return { minEdge: scaledEdge, scale: "continuous_linear" };
 }
 
 function askForDirection(pricing: MarketPricing, direction: MarketDirection): number | undefined {
