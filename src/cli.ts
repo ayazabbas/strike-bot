@@ -18,7 +18,7 @@ function makeDependencies(config: AppConfig) {
     strategy:
       config.strategySkill === "momentum"
         ? new MomentumStrategySkill({
-            minEdge: config.strategyMinEdge,
+            ...(config.strategyDynamicEdgeEnabled ? {} : { minEdge: config.strategyMinEdge }),
             candleStartToleranceSeconds: config.strategyCandleStartToleranceSeconds
           })
         : new NoopStrategySkill(),

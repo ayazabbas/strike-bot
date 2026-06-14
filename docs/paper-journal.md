@@ -20,7 +20,7 @@ Each row uses `schemaVersion: 1` and includes:
 - `strategyDecision`: original strategy output before risk/TWAK blocking
 - `decision`: final decision after safety/risk blocking
 - `pricing`: captured predict.fun bid/ask/implied probability for UP and DOWN plus spread
-- `strategyMetadata`: trigger name, elapsed minute, market start timing, Pyth candle/market start delta and tolerance, partial return bps, close location, fair threshold, max acceptable ask, ask price, edge
+- `strategyMetadata`: trigger name, elapsed second/minute, dynamic edge bucket/min required edge, market start timing, Pyth candle/market start delta and tolerance, partial return bps, close location, fair threshold, max acceptable ask, ask price, edge
 - `pythCandle`: captured Pyth candle metadata and OHLCV fields
 - `risk`: approval and rejection reasons
 - `safety`: signing/broadcasting flags; paper rows should be `false`/`false`

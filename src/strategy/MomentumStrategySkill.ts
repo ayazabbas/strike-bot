@@ -1,20 +1,35 @@
 import type { DecisionReason, MarketDirection, MarketPricing, StrategyDecision, StrategyDecisionMetadata } from "../domain/types.js";
 import type { StrategyContext, StrategySkill } from "./StrategySkill.js";
 
+export interface MomentumEdgeBucket {
+  readonly maxElapsedSeconds?: number;
+  readonly minEdge: number;
+  readonly label: string;
+}
+
 export interface MomentumStrategyOptions {
   readonly minAbsReturnBps?: number;
   readonly minUpCloseLocation?: number;
   readonly maxDownCloseLocation?: number;
   readonly minEdge?: number;
+  readonly minEdgeSchedule?: readonly MomentumEdgeBucket[];
   readonly notionalUsd?: number;
   readonly candleStartToleranceSeconds?: number;
 }
+
+const DEFAULT_EDGE_SCHEDULE: readonly MomentumEdgeBucket[] = [
+  { maxElapsedSeconds: 60, minEdge: 0.08, label: "0-60s" },
+  { maxElapsedSeconds: 180, minEdge: 0.06, label: "60-180s" },
+  { maxElapsedSeconds: 270, minEdge: 0.04, label: "180-270s" },
+  { minEdge: 0.03, label: "270s+" }
+];
 
 const DEFAULT_OPTIONS = {
   minAbsReturnBps: 5,
   minUpCloseLocation: 0.7,
   maxDownCloseLocation: 0.3,
   minEdge: 0.05,
+  minEdgeSchedule: DEFAULT_EDGE_SCHEDULE,
   notionalUsd: 1,
   candleStartToleranceSeconds: 90
 } as const;
@@ -28,10 +43,16 @@ const FAIR_THRESHOLDS: Record<number, Record<MarketDirection, number>> = {
 
 export class MomentumStrategySkill implements StrategySkill {
   readonly name = "MomentumStrategySkill";
-  private readonly options: Required<MomentumStrategyOptions>;
+  private readonly options: Required<Omit<MomentumStrategyOptions, "minEdgeSchedule">> & {
+    readonly minEdgeSchedule?: readonly MomentumEdgeBucket[];
+  };
 
   constructor(options: MomentumStrategyOptions = {}, private readonly now: () => Date = () => new Date()) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.options = {
+      ...DEFAULT_OPTIONS,
+      ...options,
+      minEdgeSchedule: options.minEdge !== undefined && options.minEdgeSchedule === undefined ? undefined : (options.minEdgeSchedule ?? DEFAULT_EDGE_SCHEDULE)
+    };
   }
 
   async decide(context: StrategyContext): Promise<StrategyDecision> {
@@ -70,7 +91,8 @@ export class MomentumStrategySkill implements StrategySkill {
       return this.noTrade("pricing_unavailable", context, createdAt, selected.id, baseMetadata);
     }
 
-    const elapsedMinutes = Math.floor((createdAt.getTime() - selected.startsAt.getTime()) / 60_000);
+    const elapsedSeconds = Math.max(0, Math.floor((createdAt.getTime() - selected.startsAt.getTime()) / 1000));
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
     const clampedElapsedMinutes = clamp(elapsedMinutes, 1, 4);
     const range = latest.high - latest.low;
     if (range <= 0 || latest.open <= 0) {
@@ -99,10 +121,15 @@ export class MomentumStrategySkill implements StrategySkill {
     }
 
     const fairThreshold = FAIR_THRESHOLDS[clampedElapsedMinutes]?.[direction];
-    const maxAcceptableAsk = fairThreshold - this.options.minEdge;
+    const edgeBucket = edgeBucketForElapsedSeconds(elapsedSeconds, this.options);
+    const minRequiredEdge = edgeBucket.minEdge;
+    const maxAcceptableAsk = fairThreshold - minRequiredEdge;
     const edge = fairThreshold - askPrice;
     const metadata = {
       ...signalMetadata,
+      elapsedSeconds,
+      edgeBucket: edgeBucket.label,
+      minRequiredEdge,
       fairThreshold,
       maxAcceptableAsk: round(maxAcceptableAsk),
       askPrice,
@@ -145,7 +172,7 @@ export class MomentumStrategySkill implements StrategySkill {
 function triggerDirection(
   partialReturnBps: number,
   closeLocation: number,
-  options: Required<MomentumStrategyOptions>
+  options: Pick<Required<MomentumStrategyOptions>, "minAbsReturnBps" | "minUpCloseLocation" | "maxDownCloseLocation">
 ): MarketDirection | undefined {
   if (partialReturnBps >= options.minAbsReturnBps && closeLocation >= options.minUpCloseLocation) {
     return "UP";
@@ -154,6 +181,18 @@ function triggerDirection(
     return "DOWN";
   }
   return undefined;
+}
+
+function edgeBucketForElapsedSeconds(
+  elapsedSeconds: number,
+  options: { readonly minEdge: number; readonly minEdgeSchedule?: readonly MomentumEdgeBucket[] }
+): MomentumEdgeBucket {
+  for (const bucket of options.minEdgeSchedule ?? []) {
+    if (bucket.maxElapsedSeconds === undefined || elapsedSeconds <= bucket.maxElapsedSeconds) {
+      return bucket;
+    }
+  }
+  return { minEdge: options.minEdge, label: "uniform" };
 }
 
 function askForDirection(pricing: MarketPricing, direction: MarketDirection): number | undefined {

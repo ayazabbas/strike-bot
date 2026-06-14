@@ -166,6 +166,51 @@ describe("MomentumStrategySkill", () => {
     });
   });
 
+  it("skips weak early-window edge using the higher early edge requirement", async () => {
+    const strategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:00:45.000Z"));
+
+    const decision = await strategy.decide(
+      context({ pricing: pricing({ up: { bestBid: 0.67, bestAsk: 0.70, impliedProbability: 0.685 } }) })
+    );
+
+    expect(decision).toMatchObject({
+      action: "no_trade",
+      reason: "price_above_threshold",
+      marketId: "472571",
+      runMode: "paper"
+    });
+    expect(decision.metadata).toMatchObject({
+      elapsedSeconds: 45,
+      minRequiredEdge: 0.08,
+      edgeBucket: "0-60s",
+      askPrice: 0.7,
+      maxAcceptableAsk: 0.6795
+    });
+  });
+
+  it("allows the same absolute edge late in the window using the lower late edge requirement", async () => {
+    const strategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:04:40.000Z"));
+
+    const decision = await strategy.decide(
+      context({ pricing: pricing({ up: { bestBid: 0.84, bestAsk: 0.86, impliedProbability: 0.85 } }) })
+    );
+
+    expect(decision).toMatchObject({
+      action: "enter",
+      marketId: "472571",
+      direction: "UP",
+      runMode: "paper"
+    });
+    expect(decision.metadata).toMatchObject({
+      elapsedSeconds: 280,
+      minRequiredEdge: 0.03,
+      edgeBucket: "270s+",
+      askPrice: 0.86,
+      maxAcceptableAsk: 0.8901,
+      edge: 0.0601
+    });
+  });
+
   it("skips when signal fires but ask is above edge-adjusted fair threshold", async () => {
     const strategy = new MomentumStrategySkill({ minEdge: 0.05 }, () => now);
 

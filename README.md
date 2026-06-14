@@ -80,7 +80,8 @@ PREDICT_FUN_API_KEY=
 PREDICT_FUN_API_KEY_FILE=~/.pfkey
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
 STRATEGY_SKILL=noop # noop|momentum
-STRATEGY_MIN_EDGE=0.05
+STRATEGY_DYNAMIC_EDGE_ENABLED=true
+STRATEGY_MIN_EDGE=0.05 # fallback when STRATEGY_DYNAMIC_EDGE_ENABLED=false
 STRATEGY_CANDLE_START_TOLERANCE_SECONDS=90
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
@@ -100,6 +101,8 @@ If a wallet private key is ever needed for local development fallback, it must c
 For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file outside this repository. When `PREDICT_FUN_API_KEY` is not set, the bot reads `PREDICT_FUN_API_KEY_FILE`; if that variable is also unset, it uses `~/.pfkey` only when the file exists. The key is used only for request headers and is not printed in inspect or tick output.
 
 `PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE` controls the minimum time remaining for BTC 5-minute UP/DOWN market selection. The default is 60 seconds; markets that are closed, resolved, or already inside that closing window are ignored. If predict.fun marks an upcoming category as tradable/open, it can be selected before its price window starts.
+
+`STRATEGY_DYNAMIC_EDGE_ENABLED=true` makes `MomentumStrategySkill` scale the required edge by time elapsed in the selected 5-minute market: 8% for 0-60s, 6% for 60-180s, 4% for 180-270s, and 3% after 270s. This keeps early entries selective while allowing smaller edges closer to expiry. Set `STRATEGY_DYNAMIC_EDGE_ENABLED=false` to use the uniform `STRATEGY_MIN_EDGE` fallback.
 
 `STRATEGY_CANDLE_START_TOLERANCE_SECONDS` controls how far the latest Pyth candle `openTime` may differ from the selected predict.fun market `startsAt` before `MomentumStrategySkill` refuses to trade with `candle_market_mismatch`. The default is 90 seconds because predict.fun settles from Chainlink while Pyth is reference data. `MomentumStrategySkill` also refuses to enter before `selectedMarket.startsAt` with `market_not_started`.
 
