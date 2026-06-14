@@ -102,7 +102,7 @@ For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file out
 
 `PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE` controls the minimum time remaining for BTC 5-minute UP/DOWN market selection. The default is 60 seconds; markets that are closed, resolved, or already inside that closing window are ignored. If predict.fun marks an upcoming category as tradable/open, it can be selected before its price window starts.
 
-`STRATEGY_DYNAMIC_EDGE_ENABLED=true` makes `MomentumStrategySkill` scale the required edge continuously by time elapsed in the selected 5-minute market, linearly from 8% at market start to 3% at expiry. This keeps early entries selective while allowing progressively smaller edges closer to expiry. Set `STRATEGY_DYNAMIC_EDGE_ENABLED=false` to use the uniform `STRATEGY_MIN_EDGE` fallback.
+`STRATEGY_DYNAMIC_EDGE_ENABLED=true` makes `MomentumStrategySkill` scale the required edge continuously by time elapsed in the selected 5-minute market, linearly from 6% at market start to 1% at expiry. This keeps early entries selective while allowing progressively smaller edges closer to expiry. Set `STRATEGY_DYNAMIC_EDGE_ENABLED=false` to use the uniform `STRATEGY_MIN_EDGE` fallback.
 
 `STRATEGY_CANDLE_START_TOLERANCE_SECONDS` controls how far the latest Pyth candle `openTime` may differ from the selected predict.fun market `startsAt` before `MomentumStrategySkill` refuses to trade with `candle_market_mismatch`. The default is 90 seconds because predict.fun settles from Chainlink while Pyth is reference data. `MomentumStrategySkill` also refuses to enter before `selectedMarket.startsAt` with `market_not_started`.
 

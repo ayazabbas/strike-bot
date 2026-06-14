@@ -18,8 +18,8 @@ export interface MomentumStrategyOptions {
 }
 
 const DEFAULT_EDGE_SCALE: MomentumEdgeScale = {
-  startEdge: 0.08,
-  endEdge: 0.03,
+  startEdge: 0.06,
+  endEdge: 0.01,
   durationSeconds: 300
 };
 

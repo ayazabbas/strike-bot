@@ -171,7 +171,7 @@ describe("MomentumStrategySkill", () => {
     const lateStrategy = new MomentumStrategySkill({}, () => new Date("2026-06-13T12:04:40.000Z"));
 
     const earlyDecision = await earlyStrategy.decide(
-      context({ pricing: pricing({ up: { bestBid: 0.67, bestAsk: 0.70, impliedProbability: 0.685 } }) })
+      context({ pricing: pricing({ up: { bestBid: 0.69, bestAsk: 0.71, impliedProbability: 0.7 } }) })
     );
     const lateDecision = await lateStrategy.decide(
       context({ pricing: pricing({ up: { bestBid: 0.84, bestAsk: 0.86, impliedProbability: 0.85 } }) })
@@ -185,10 +185,10 @@ describe("MomentumStrategySkill", () => {
     });
     expect(earlyDecision.metadata).toMatchObject({
       elapsedSeconds: 45,
-      minRequiredEdge: 0.0725,
+      minRequiredEdge: 0.0525,
       edgeScale: "continuous_linear",
-      askPrice: 0.7,
-      maxAcceptableAsk: 0.687
+      askPrice: 0.71,
+      maxAcceptableAsk: 0.707
     });
 
     expect(lateDecision).toMatchObject({
@@ -199,10 +199,10 @@ describe("MomentumStrategySkill", () => {
     });
     expect(lateDecision.metadata).toMatchObject({
       elapsedSeconds: 280,
-      minRequiredEdge: 0.0333,
+      minRequiredEdge: 0.0133,
       edgeScale: "continuous_linear",
       askPrice: 0.86,
-      maxAcceptableAsk: 0.8868,
+      maxAcceptableAsk: 0.9068,
       edge: 0.0601
     });
   });
