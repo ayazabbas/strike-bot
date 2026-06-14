@@ -25,7 +25,10 @@ function context(): PaperJournalContext {
       maxAcceptableAsk: 0.7748,
       askPrice: 0.76,
       edge: 0.0648,
+      elapsedSeconds: 120,
       elapsedMinutes: 2,
+      edgeScale: "continuous_linear",
+      minRequiredEdge: 0.06,
       partialReturnBps: 200,
       closeLocation: 0.75
     }
@@ -114,7 +117,10 @@ describe("PaperJournal", () => {
         maxAcceptableAsk: 0.7748,
         askPrice: 0.76,
         edge: 0.0648,
+        elapsedSeconds: 120,
         elapsedMinutes: 2,
+        edgeScale: "continuous_linear",
+        minRequiredEdge: 0.06,
         partialReturnBps: 200,
         closeLocation: 0.75
       },
