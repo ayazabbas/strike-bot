@@ -19,6 +19,7 @@ describe("config", () => {
     expect(config.predictFunMinSecondsBeforeClose).toBe(60);
     expect(config.strategySkill).toBe("noop");
     expect(config.strategyMinEdge).toBe(0.05);
+    expect(config.paperJournalPath).toBe("data/paper/trades.jsonl");
   });
 
   it("loads read-only adapter settings from environment names", () => {
@@ -27,7 +28,8 @@ describe("config", () => {
       PYTH_HISTORY_LOOKBACK_MINUTES: "30",
       PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE: "90",
       STRATEGY_SKILL: "momentum",
-      STRATEGY_MIN_EDGE: "0.07"
+      STRATEGY_MIN_EDGE: "0.07",
+      PAPER_JOURNAL_PATH: "tmp/paper.jsonl"
     });
 
     expect(config.predictFunApiKey).toBe("predict-test-key");
@@ -35,6 +37,7 @@ describe("config", () => {
     expect(config.predictFunMinSecondsBeforeClose).toBe(90);
     expect(config.strategySkill).toBe("momentum");
     expect(config.strategyMinEdge).toBe(0.07);
+    expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
   });
 
   it("loads predict.fun API key from an external file path", () => {

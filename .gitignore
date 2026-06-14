@@ -13,6 +13,7 @@
 
 # Local runtime artifacts
 data/
+data/paper/
 logs/
 *.sqlite
 *.sqlite3

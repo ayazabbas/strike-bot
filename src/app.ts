@@ -4,6 +4,7 @@ import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { RunRepository } from "./storage/RunRepository.js";
+import type { PaperJournal } from "./storage/PaperJournal.js";
 import type { StrategySkill } from "./strategy/StrategySkill.js";
 import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
@@ -16,6 +17,7 @@ export interface AppDependencies {
   readonly twak: TrustWalletAgentKitAdapter;
   readonly strategy: StrategySkill;
   readonly repository: RunRepository;
+  readonly paperJournal?: PaperJournal;
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
@@ -105,6 +107,26 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
   const executor = new PaperExecutor();
   const execution = await executor.execute(blockedDecision, mode);
   await dependencies.repository.recordExecution(run.id, execution);
+  const safety = {
+    signing: false,
+    broadcasting: false
+  };
+
+  if (mode === "paper") {
+    await dependencies.paperJournal?.append({
+      run,
+      mode,
+      strategyName: dependencies.strategy.name,
+      selectedMarket: selectedMarket ?? undefined,
+      pricing,
+      candle,
+      decision: blockedDecision,
+      strategyDecision: decision,
+      risk,
+      execution,
+      safety
+    });
+  }
 
   return {
     run,
@@ -114,10 +136,7 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     market: formatSelectedMarket(selectedMarket),
     pricing: pricing ?? null,
     twak,
-    safety: {
-      signing: false,
-      broadcasting: false
-    }
+    safety
   };
 }
 

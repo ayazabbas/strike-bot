@@ -4,6 +4,7 @@ import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
+import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
 import { inspect, tick } from "./app.js";
@@ -18,7 +19,8 @@ function makeDependencies(config: AppConfig) {
       config.strategySkill === "momentum"
         ? new MomentumStrategySkill({ minEdge: config.strategyMinEdge })
         : new NoopStrategySkill(),
-    repository: new NoopSqliteRunRepository(config.databasePath)
+    repository: new NoopSqliteRunRepository(config.databasePath),
+    paperJournal: new JsonlPaperJournal(config.paperJournalPath)
   };
 }
 
