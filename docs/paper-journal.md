@@ -25,9 +25,21 @@ Each row uses `schemaVersion: 1` and includes:
 - `risk`: approval and rejection reasons
 - `safety`: signing/broadcasting flags; paper rows should be `false`/`false`
 - `execution`: simulated paper fill/skipped details, fill price, notional, and quantity when applicable
-- `settlement`: placeholders initialized as `unknown`/`null` for later enrichment
+- `settlement`: placeholders initialized as `unknown`/`null` and later enriched from official predict.fun market resolution
 
 No API keys, wallet material, raw environment variables, or signing secrets should be written to this journal.
+
+## Settlement enrichment
+
+Run:
+
+```bash
+npm run settle-paper
+```
+
+The command reads `PAPER_JOURNAL_PATH`, calls predict.fun `GET /v1/markets/:id`, and atomically rewrites only eligible rows where `decision.action` is `enter` and `settlement.status` is `unknown` or `unresolved`. Rows are updated only after predict.fun reports the market as resolved.
+
+For resolved rows, `winningDirection` is normalized from official `Up`/`Down` outcome statuses. Paper economics use the existing binary-share model: winning payout is `notionalUsd / ask`, losing payout is `0`, and `pnlUsd` is `payoutUsd - notionalUsd`.
 
 ## Example consumers
 
@@ -37,4 +49,7 @@ jq . data/paper/trades.jsonl | tail -n 80
 
 # Load into DuckDB
  duckdb -c "SELECT timestamp, market.slug, decision.action, decision.reason, strategyMetadata.edge FROM read_json_auto('data/paper/trades.jsonl');"
+
+# Enrich official settlement fields
+npm run settle-paper
 ```

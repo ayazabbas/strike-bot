@@ -22,6 +22,11 @@ describe("RestPredictFunAdapter", () => {
       up: {},
       down: {}
     });
+    await expect(adapter.getMarketSettlement("btc-5m-1")).resolves.toMatchObject({
+      marketId: "btc-5m-1",
+      status: "unknown",
+      winningDirection: null
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -280,6 +285,72 @@ describe("RestPredictFunAdapter", () => {
         bestAsk: 0.49,
         impliedProbability: 0.465
       }
+    });
+  });
+
+  it("fetches and normalizes official resolved settlement outcomes", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        data: {
+          id: "472369",
+          status: "RESOLVED",
+          outcomes: [
+            { name: "Up", status: "WON" },
+            { name: "Down", status: "LOST" }
+          ]
+        }
+      })
+    );
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    const settlement = await adapter.getMarketSettlement("472369");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0].toString()).toBe("https://api.predict.fun/v1/markets/472369");
+    expect(settlement).toMatchObject({
+      marketId: "472369",
+      source: "predict.fun",
+      status: "resolved",
+      winningDirection: "UP"
+    });
+  });
+
+  it("normalizes unresolved and ambiguous official settlements safely", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: "472369",
+            status: "OPEN",
+            outcomes: [
+              { name: "Up", status: "OPEN" },
+              { name: "Down", status: "OPEN" }
+            ]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: "472370",
+            status: "RESOLVED",
+            outcomes: [
+              { name: "Up", status: "WON" },
+              { name: "Down", status: "WON" }
+            ]
+          }
+        })
+      );
+    const adapter = new RestPredictFunAdapter(loadConfig({ PREDICT_FUN_API_KEY: "test-key" }), fetchImpl);
+
+    await expect(adapter.getMarketSettlement("472369")).resolves.toMatchObject({
+      status: "unresolved",
+      winningDirection: null
+    });
+    await expect(adapter.getMarketSettlement("472370")).resolves.toMatchObject({
+      status: "resolved",
+      winningDirection: "TIE"
     });
   });
 });

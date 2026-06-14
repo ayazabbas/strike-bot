@@ -2,6 +2,7 @@ import type { AppConfig } from "../config.js";
 import type {
   MarketDirection,
   MarketPricing,
+  MarketSettlement,
   MarketSidePricing,
   MarketSnapshot,
   PredictFunMarket
@@ -10,6 +11,7 @@ import type {
 export interface PredictFunAdapter {
   listMarkets(): Promise<MarketSnapshot>;
   getOrderbookPricing(marketId: string): Promise<MarketPricing>;
+  getMarketSettlement(marketId: string): Promise<MarketSettlement>;
 }
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -64,6 +66,21 @@ export class RestPredictFunAdapter implements PredictFunAdapter {
     }
   }
 
+  async getMarketSettlement(marketId: string): Promise<MarketSettlement> {
+    const capturedAt = new Date();
+
+    if (!this.config.predictFunApiKey) {
+      return unknownSettlement(marketId, capturedAt);
+    }
+
+    try {
+      const payload = await this.fetchJson(`/v1/markets/${encodeURIComponent(marketId)}`);
+      return normalizeMarketSettlement(marketId, payload, capturedAt);
+    } catch {
+      return unknownSettlement(marketId, capturedAt);
+    }
+  }
+
   private async fetchJson(path: string): Promise<unknown> {
     const url = new URL(path, this.config.predictFunBaseUrl);
     const response = await this.fetchImpl(url, {
@@ -92,6 +109,10 @@ export class StubPredictFunAdapter implements PredictFunAdapter {
 
   async getOrderbookPricing(marketId: string): Promise<MarketPricing> {
     return unknownPricing(marketId, new Date());
+  }
+
+  async getMarketSettlement(marketId: string): Promise<MarketSettlement> {
+    return unknownSettlement(marketId, new Date());
   }
 }
 
@@ -630,4 +651,109 @@ function recordMatchesMarketId(value: unknown, marketId: string): boolean {
     return false;
   }
   return firstString(value, ["marketId", "market_id", "id"]) === marketId;
+}
+
+function normalizeMarketSettlement(marketId: string, payload: unknown, capturedAt: Date): MarketSettlement {
+  const source = findMarketPayload(payload, marketId);
+  if (!isRecord(source)) {
+    return unknownSettlement(marketId, capturedAt);
+  }
+
+  const status = normalizeSettlementStatus(firstString(source, ["status", "state", "marketStatus"]));
+  if (status !== "resolved") {
+    return {
+      marketId,
+      capturedAt,
+      source: "predict.fun",
+      status,
+      winningDirection: null
+    };
+  }
+
+  return {
+    marketId,
+    capturedAt,
+    source: "predict.fun",
+    status,
+    winningDirection: normalizeWinningDirection(source)
+  };
+}
+
+function unknownSettlement(marketId: string, capturedAt: Date): MarketSettlement {
+  return {
+    marketId,
+    capturedAt,
+    source: "predict.fun",
+    status: "unknown",
+    winningDirection: null
+  };
+}
+
+function normalizeSettlementStatus(value: string | undefined): MarketSettlement["status"] {
+  const normalized = value?.toUpperCase();
+  if (normalized === "RESOLVED" || normalized === "SETTLED") {
+    return "resolved";
+  }
+  if (
+    normalized === "OPEN" ||
+    normalized === "OPENED" ||
+    normalized === "ACTIVE" ||
+    normalized === "TRADING" ||
+    normalized === "CLOSED" ||
+    normalized === "RESOLVING" ||
+    normalized === "REGISTERED"
+  ) {
+    return "unresolved";
+  }
+  return "unknown";
+}
+
+function normalizeWinningDirection(payload: UnknownRecord): MarketSettlement["winningDirection"] {
+  const outcomes = Array.isArray(payload["outcomes"]) ? payload["outcomes"].filter(isRecord) : [];
+  const winners = outcomes
+    .filter((outcome) => firstString(outcome, ["status", "state"])?.toUpperCase() === "WON")
+    .map((outcome) => normalizeOutcomeDirection(firstString(outcome, ["name", "label", "outcome", "direction"])))
+    .filter((direction): direction is MarketDirection => direction !== undefined);
+
+  if (winners.length === 1) {
+    return winners[0];
+  }
+  if (winners.length > 1) {
+    return "TIE";
+  }
+
+  return null;
+}
+
+function normalizeOutcomeDirection(value: string | undefined): MarketDirection | undefined {
+  const normalized = value?.toUpperCase();
+  if (normalized === "UP") {
+    return "UP";
+  }
+  if (normalized === "DOWN") {
+    return "DOWN";
+  }
+  return undefined;
+}
+
+function findMarketPayload(payload: unknown, marketId: string): unknown {
+  if (Array.isArray(payload)) {
+    return payload.find((item) => recordMatchesMarketId(item, marketId)) ?? payload[0];
+  }
+  if (!isRecord(payload)) {
+    return payload;
+  }
+  if (recordMatchesMarketId(payload, marketId)) {
+    return payload;
+  }
+  for (const key of ["data", "market", "result"]) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      return value.find((item) => recordMatchesMarketId(item, marketId)) ?? value[0];
+    }
+    if (isRecord(value)) {
+      return findMarketPayload(value, marketId);
+    }
+  }
+  return payload;
 }

@@ -2,6 +2,7 @@ import type { RunMode } from "../config.js";
 
 export type AssetSymbol = "BTC";
 export type MarketDirection = "UP" | "DOWN";
+export type SettlementWinningDirection = MarketDirection | "TIE" | null;
 export type DecisionAction = "no_trade" | "enter";
 export type DecisionReason =
   | "inspect_mode"
@@ -59,6 +60,14 @@ export interface MarketPricing {
   readonly up: MarketSidePricing;
   readonly down: MarketSidePricing;
   readonly spread?: number;
+}
+
+export interface MarketSettlement {
+  readonly marketId: string;
+  readonly capturedAt: Date;
+  readonly source: "predict.fun";
+  readonly status: "resolved" | "unresolved" | "unknown";
+  readonly winningDirection: SettlementWinningDirection;
 }
 
 export interface MarketSnapshot {

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildPaperTradeRecord, JsonlPaperJournal } from "../src/storage/PaperJournal.js";
+import { buildPaperTradeRecord, enrichPaperJournalSettlements, JsonlPaperJournal } from "../src/storage/PaperJournal.js";
+import type { PredictFunAdapter } from "../src/adapters/PredictFunAdapter.js";
 import type { PaperJournalContext } from "../src/storage/PaperJournal.js";
 
 const now = new Date("2026-06-13T12:02:00.000Z");
@@ -167,4 +168,112 @@ describe("PaperJournal", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("atomically enriches eligible enter rows with official resolved settlement economics", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-paper-"));
+    const journalPath = join(dir, "trades.jsonl");
+    const winningRow = buildPaperTradeRecord(context());
+    const losingRow = {
+      ...buildPaperTradeRecord(context()),
+      runId: "run-2",
+      market: { ...winningRow.market, id: "472572" },
+      decision: { ...winningRow.decision, marketId: "472572", direction: "DOWN" },
+      execution: {
+        ...winningRow.execution,
+        fill: { ...winningRow.execution.fill, direction: "DOWN", price: 0.24, quantity: 4.166667 }
+      }
+    };
+    const noTradeRow = {
+      ...buildPaperTradeRecord(context()),
+      runId: "run-3",
+      decision: { ...winningRow.decision, action: "no_trade", reason: "signal_not_triggered" }
+    };
+    const alreadyResolvedRow = {
+      ...buildPaperTradeRecord(context()),
+      runId: "run-4",
+      settlement: { ...winningRow.settlement, status: "resolved", winningDirection: "UP" }
+    };
+    const originalNoTradeSettlement = noTradeRow.settlement;
+    const originalResolvedSettlement = alreadyResolvedRow.settlement;
+
+    try {
+      writeFileSync(
+        journalPath,
+        [
+          JSON.stringify(winningRow),
+          "not-json",
+          JSON.stringify(losingRow),
+          JSON.stringify(noTradeRow),
+          JSON.stringify(alreadyResolvedRow)
+        ].join("\n") + "\n",
+        "utf8"
+      );
+
+      const calls: string[] = [];
+      const result = await enrichPaperJournalSettlements(journalPath, fakeSettlementAdapter(calls));
+
+      expect(result).toEqual({
+        path: journalPath,
+        scannedRows: 5,
+        eligibleRows: 2,
+        updatedRows: 2
+      });
+      expect(calls).toEqual(["472571", "472572"]);
+
+      const lines = readFileSync(journalPath, "utf8").trimEnd().split("\n");
+      expect(lines[1]).toBe("not-json");
+      const enrichedWin = JSON.parse(lines[0]);
+      const enrichedLoss = JSON.parse(lines[2]);
+      const preservedNoTrade = JSON.parse(lines[3]);
+      const preservedResolved = JSON.parse(lines[4]);
+
+      expect(enrichedWin.settlement).toMatchObject({
+        status: "resolved",
+        checkedAt: "2026-06-13T12:06:00.000Z",
+        resolvedAt: "2026-06-13T12:05:00.000Z",
+        winningDirection: "UP",
+        payoutUsd: 1.315789,
+        pnlUsd: 0.315789
+      });
+      expect(enrichedLoss.settlement).toMatchObject({
+        status: "resolved",
+        winningDirection: "UP",
+        payoutUsd: 0,
+        pnlUsd: -1
+      });
+      expect(preservedNoTrade.settlement).toEqual(originalNoTradeSettlement);
+      expect(preservedResolved.settlement).toEqual(originalResolvedSettlement);
+      expect({ ...enrichedWin, settlement: winningRow.settlement }).toEqual(winningRow);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
+
+function fakeSettlementAdapter(calls: string[]): PredictFunAdapter {
+  return {
+    async listMarkets() {
+      return { capturedAt: now, markets: [] };
+    },
+    async getOrderbookPricing(marketId: string) {
+      return {
+        marketId,
+        capturedAt: now,
+        source: "predict.fun",
+        status: "unknown",
+        up: {},
+        down: {}
+      };
+    },
+    async getMarketSettlement(marketId: string) {
+      calls.push(marketId);
+      return {
+        marketId,
+        capturedAt: new Date("2026-06-13T12:06:00.000Z"),
+        source: "predict.fun",
+        status: "resolved",
+        winningDirection: "UP"
+      };
+    }
+  };
+}

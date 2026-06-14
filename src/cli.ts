@@ -7,7 +7,7 @@ import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
 import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
-import { inspect, tick } from "./app.js";
+import { inspect, settlePaperJournal, tick } from "./app.js";
 
 function makeDependencies(config: AppConfig) {
   return {
@@ -45,6 +45,11 @@ async function main() {
   if (command === "tick") {
     const mode = runModeSchema.parse(config.runMode);
     console.log(safeJson(await tick(config, dependencies, mode)));
+    return;
+  }
+
+  if (command === "settle-paper") {
+    console.log(safeJson(await settlePaperJournal(config, dependencies)));
     return;
   }
 

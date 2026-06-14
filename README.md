@@ -102,6 +102,8 @@ For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file out
 
 `RUN_MODE=paper npm run tick` appends one structured JSONL paper-trading record per tick to `PAPER_JOURNAL_PATH`, defaulting to `data/paper/trades.jsonl`. The generated `data/` tree is ignored by git. Records include run/timestamp, selected BTC 5-minute market, decision and strategy metadata, predict.fun pricing, Pyth candle fields, paper fill details, safety flags, and settlement placeholders initialized to `unknown`/`null`. They intentionally do not include API keys, wallet material, or raw environment configuration. See `docs/paper-journal.md` for the schema and analysis examples.
 
+`npm run settle-paper` reads the configured paper journal, checks official predict.fun settlement for eligible paper entries, and atomically rewrites rows only when predict.fun reports the market as resolved. It updates only the row `settlement` field and reports counts; it does not sign or broadcast anything.
+
 ## Expected initial commands
 
 Once implemented:
@@ -112,6 +114,7 @@ npm test
 npm run typecheck
 npm run inspect
 RUN_MODE=paper npm run tick
+npm run settle-paper
 RUN_MODE=dry_run npm run tick
 ```
 

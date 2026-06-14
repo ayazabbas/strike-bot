@@ -5,6 +5,7 @@ import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { RunRepository } from "./storage/RunRepository.js";
 import type { PaperJournal } from "./storage/PaperJournal.js";
+import { enrichPaperJournalSettlements } from "./storage/PaperJournal.js";
 import type { StrategySkill } from "./strategy/StrategySkill.js";
 import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
@@ -138,6 +139,10 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     twak,
     safety
   };
+}
+
+export async function settlePaperJournal(config: AppConfig, dependencies: Pick<AppDependencies, "predictFun">) {
+  return enrichPaperJournalSettlements(config.paperJournalPath, dependencies.predictFun);
 }
 
 function formatSelectedMarket(selected: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>) {

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { tick } from "../src/app.js";
+import { settlePaperJournal, tick } from "../src/app.js";
 import type { AppDependencies } from "../src/app.js";
 import type { PaperJournalContext } from "../src/storage/PaperJournal.js";
 import type { RunMode } from "../src/config.js";
 import type { ExecutionResult, MarketSnapshot, StrategyDecision } from "../src/domain/types.js";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 function dependencies(mode: RunMode, journalRecords: PaperJournalContext[]): AppDependencies {
   const now = new Date();
@@ -60,6 +63,15 @@ function dependencies(mode: RunMode, journalRecords: PaperJournalContext[]): App
           up: { bestBid: 0.7, bestAsk: 0.76, impliedProbability: 0.73 },
           down: { bestBid: 0.2, bestAsk: 0.24, impliedProbability: 0.22 },
           spread: 0.04
+        };
+      },
+      async getMarketSettlement(marketId: string) {
+        return {
+          marketId,
+          capturedAt: now,
+          source: "predict.fun" as const,
+          status: "unknown" as const,
+          winningDirection: null
         };
       }
     },
@@ -122,5 +134,63 @@ describe("tick paper journal", () => {
     await tick(loadConfig({ RUN_MODE: "dry_run" }), dependencies("dry_run", records), "dry_run");
 
     expect(records).toHaveLength(0);
+  });
+
+  it("settles the configured paper journal path through the app wrapper", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-app-paper-"));
+    const journalPath = join(dir, "paper.jsonl");
+
+    try {
+      writeFileSync(
+        journalPath,
+        `${JSON.stringify({
+          decision: { action: "enter", marketId: "472571", direction: "UP", notionalUsd: 2 },
+          market: { id: "472571", resolvesAt: "2026-06-13T12:05:00.000Z" },
+          pricing: { up: { ask: 0.5 } },
+          execution: { fill: { direction: "UP", price: 0.5, notionalUsd: 2 } },
+          settlement: { status: "unknown" }
+        })}\n`,
+        "utf8"
+      );
+
+      const result = await settlePaperJournal(
+        loadConfig({ PAPER_JOURNAL_PATH: journalPath, PREDICT_FUN_API_KEY: "test-key" }),
+        {
+          predictFun: {
+            async listMarkets() {
+              return { capturedAt: new Date(), markets: [] };
+            },
+            async getOrderbookPricing(marketId: string) {
+              return {
+                marketId,
+                capturedAt: new Date(),
+                source: "predict.fun" as const,
+                status: "unknown" as const,
+                up: {},
+                down: {}
+              };
+            },
+            async getMarketSettlement(marketId: string) {
+              return {
+                marketId,
+                capturedAt: new Date("2026-06-13T12:06:00.000Z"),
+                source: "predict.fun" as const,
+                status: "resolved" as const,
+                winningDirection: "UP" as const
+              };
+            }
+          }
+        }
+      );
+
+      expect(result.updatedRows).toBe(1);
+      expect(JSON.parse(readFileSync(journalPath, "utf8")).settlement).toMatchObject({
+        status: "resolved",
+        payoutUsd: 4,
+        pnlUsd: 2
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
