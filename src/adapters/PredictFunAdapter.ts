@@ -170,6 +170,10 @@ function extractCategoryMarketItems(payload: unknown): UnknownRecord[] {
       categoryTitle: firstString(category, ["title", "shortTitle"]),
       categoryStartsAt: firstString(category, ["startsAt", "startTime", "start_time"]),
       categoryEndsAt: firstString(category, ["endsAt", "endTime", "end_time"]),
+      feeRateBps: market["feeRateBps"] ?? market["fee_rate_bps"] ?? category["feeRateBps"] ?? category["fee_rate_bps"],
+      isNegRisk: market["isNegRisk"] ?? market["is_neg_risk"] ?? category["isNegRisk"] ?? category["is_neg_risk"],
+      isYieldBearing:
+        market["isYieldBearing"] ?? market["is_yield_bearing"] ?? category["isYieldBearing"] ?? category["is_yield_bearing"],
       startsAt: firstString(market, ["startsAt", "startTime", "start_time"]) ?? firstString(category, ["startsAt", "startTime", "start_time"]),
       endsAt: firstString(market, ["endsAt", "endTime", "end_time"]) ?? firstString(category, ["endsAt", "endTime", "end_time"])
     }));
@@ -254,6 +258,11 @@ function mapPredictFunMarket(item: UnknownRecord, capturedAt: Date): PredictFunM
       asset,
       intervalMinutes,
       directions,
+      outcomeOnChainIds: normalizeOutcomeOnChainIds(item),
+      feeRateBps: firstNumber(item, ["feeRateBps", "fee_rate_bps", "feeBps", "fee_bps"]),
+      isNegRisk: firstBoolean(item, ["isNegRisk", "is_neg_risk", "negRisk", "neg_risk"]),
+      isYieldBearing: firstBoolean(item, ["isYieldBearing", "is_yield_bearing", "yieldBearing", "yield_bearing"]),
+      tradingStatus: firstString(item, ["tradingStatus", "trading_status"]),
       categorySlug: firstString(item, ["categorySlug", "category_slug"]),
       startsAt,
       closesAt,
@@ -324,6 +333,49 @@ function normalizeDirections(item: UnknownRecord, text: string): readonly Market
   return hasUp && hasDown ? ["UP", "DOWN"] : [];
 }
 
+function normalizeOutcomeOnChainIds(item: UnknownRecord): Partial<Record<MarketDirection, string>> | undefined {
+  const result: Partial<Record<MarketDirection, string>> = {};
+  const outcomes = Array.isArray(item["outcomes"]) ? item["outcomes"].filter(isRecord) : [];
+
+  for (const outcome of outcomes) {
+    const direction = normalizeDirectionName(firstString(outcome, ["name", "label", "outcome", "direction"]));
+    const onChainId = firstString(outcome, [
+      "onChainId",
+      "onchainId",
+      "on_chain_id",
+      "tokenId",
+      "token_id",
+      "assetId",
+      "asset_id"
+    ]);
+    if (direction && onChainId) {
+      result[direction] = onChainId;
+    }
+  }
+
+  const upDirect = firstString(item, ["upOnChainId", "up_on_chain_id", "upTokenId", "up_token_id"]);
+  const downDirect = firstString(item, ["downOnChainId", "down_on_chain_id", "downTokenId", "down_token_id"]);
+  if (upDirect) {
+    result.UP = upDirect;
+  }
+  if (downDirect) {
+    result.DOWN = downDirect;
+  }
+
+  return result.UP || result.DOWN ? result : undefined;
+}
+
+function normalizeDirectionName(value: string | undefined): MarketDirection | undefined {
+  const normalized = value?.toUpperCase();
+  if (normalized === "UP" || normalized === "HIGHER" || normalized === "ABOVE") {
+    return "UP";
+  }
+  if (normalized === "DOWN" || normalized === "LOWER" || normalized === "BELOW") {
+    return "DOWN";
+  }
+  return undefined;
+}
+
 function normalizeMarketStatus(item: UnknownRecord): PredictFunMarket["status"] {
   const tradingStatus = normalizeStatus(firstString(item, ["tradingStatus", "trading_status"]));
   if (tradingStatus === "open") {
@@ -381,6 +433,25 @@ function firstNumber(item: UnknownRecord, keys: string[]): number | undefined {
       const parsed = Number(value);
       if (Number.isFinite(parsed)) {
         return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function firstBoolean(item: UnknownRecord, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true") {
+        return true;
+      }
+      if (normalized === "false") {
+        return false;
       }
     }
   }

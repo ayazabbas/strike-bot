@@ -7,6 +7,7 @@ import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
 import { JsonlPaperJournal } from "./storage/PaperJournal.js";
+import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
 import { inspect, settlePaperJournal, tick } from "./app.js";
@@ -23,18 +24,21 @@ function makeDependencies(config: AppConfig) {
       config.strategySkill === "momentum"
         ? new MomentumStrategySkill({
             ...(config.strategyDynamicEdgeEnabled ? {} : { minEdge: config.strategyMinEdge }),
+            notionalUsd: config.strategyNotionalUsd,
             candleStartToleranceSeconds: config.strategyCandleStartToleranceSeconds
           })
         : new NoopStrategySkill(),
     repository: new NoopSqliteRunRepository(config.databasePath),
-    paperJournal: new JsonlPaperJournal(config.paperJournalPath)
+    paperJournal: new JsonlPaperJournal(config.paperJournalPath),
+    predictFunOrderExecutor: new PredictFunOrderExecutor(config)
   };
 }
 
 function safeJson(value: unknown): string {
   return JSON.stringify(
     value,
-    (_key, nestedValue) => (nestedValue instanceof Date ? nestedValue.toISOString() : nestedValue),
+    (_key, nestedValue) =>
+      nestedValue instanceof Date ? nestedValue.toISOString() : typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue,
     2
   );
 }

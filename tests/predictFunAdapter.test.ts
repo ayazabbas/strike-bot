@@ -41,11 +41,18 @@ describe("RestPredictFunAdapter", () => {
               title: "Bitcoin 5 minute UP or DOWN",
               asset: "BTC",
               interval: "5m",
-              outcomes: ["UP", "DOWN"],
               startTime: "2026-06-12T12:00:00.000Z",
               closeTime: "2026-06-12T12:05:00.000Z",
               resolveTime: "2026-06-12T12:06:00.000Z",
               liquidityUsd: "42.5",
+              feeRateBps: "20",
+              isNegRisk: true,
+              isYieldBearing: false,
+              tradingStatus: "OPEN",
+              outcomes: [
+                { name: "UP", onChainId: "111" },
+                { name: "DOWN", onChainId: "222" }
+              ],
               status: "open"
             }
           ]
@@ -73,6 +80,11 @@ describe("RestPredictFunAdapter", () => {
       intervalMinutes: 5,
       directions: ["UP", "DOWN"],
       liquidityUsd: 42.5,
+      outcomeOnChainIds: { UP: "111", DOWN: "222" },
+      feeRateBps: 20,
+      isNegRisk: true,
+      isYieldBearing: false,
+      tradingStatus: "OPEN",
       status: "open"
     });
   });

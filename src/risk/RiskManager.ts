@@ -20,6 +20,10 @@ export class RiskManager {
       reasons.push("max_position_exceeded");
     }
 
+    if (decision.runMode === "live" && decision.notionalUsd > this.config.maxTestTradeUsd) {
+      reasons.push("max_test_trade_exceeded");
+    }
+
     if (decision.runMode === "live" && !this.config.liveTradingApproved) {
       reasons.push("live_not_approved");
     }

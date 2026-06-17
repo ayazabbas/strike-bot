@@ -24,10 +24,27 @@ describe("RiskManager", () => {
         action: "enter",
         marketId: "m1",
         direction: "UP",
-        notionalUsd: 3,
+        notionalUsd: 0.05,
         runMode: "live",
         createdAt: new Date()
       })
     ).toEqual({ approved: false, reasons: ["live_not_approved"] });
+  });
+
+  it("rejects live entries above the configured ten-cent test cap", () => {
+    const risk = new RiskManager(
+      loadConfig({ RUN_MODE: "live", LIVE_TRADING_APPROVED: "true", MAX_POSITION_USD: "5", MAX_TEST_TRADE_USD: "0.1" })
+    );
+
+    expect(
+      risk.evaluate({
+        action: "enter",
+        marketId: "m1",
+        direction: "UP",
+        notionalUsd: 0.11,
+        runMode: "live",
+        createdAt: new Date()
+      })
+    ).toEqual({ approved: false, reasons: ["max_test_trade_exceeded"] });
   });
 });

@@ -25,6 +25,11 @@ export interface PredictFunMarket {
   readonly asset: string;
   readonly intervalMinutes: number;
   readonly directions: readonly MarketDirection[];
+  readonly outcomeOnChainIds?: Partial<Record<MarketDirection, string>>;
+  readonly feeRateBps?: number;
+  readonly isNegRisk?: boolean;
+  readonly isYieldBearing?: boolean;
+  readonly tradingStatus?: string;
   readonly categorySlug?: string;
   readonly startsAt: Date;
   readonly closesAt: Date;
@@ -153,10 +158,29 @@ export interface EnterDecision {
 
 export type StrategyDecision = NoTradeDecision | EnterDecision;
 
+export interface RedactedPredictFunOrderDetails {
+  readonly marketId: string;
+  readonly direction: MarketDirection;
+  readonly tokenId: string;
+  readonly hash: string;
+  readonly pricePerShare: string;
+  readonly pricePerShareWei: string;
+  readonly makerAmount: string;
+  readonly takerAmount: string;
+  readonly feeRateBps: number;
+  readonly strategy: "LIMIT";
+  readonly isFillOrKill: true;
+  readonly isPostOnly: false;
+  readonly reservedBalancePolicy: "REJECT_MARKET_ORDER";
+  readonly selfTradePrevention: "CANCEL_MAKER";
+  readonly apiStatus?: number;
+}
+
 export interface ExecutionResult {
   readonly mode: RunMode;
-  readonly broadcast: false;
-  readonly status: "skipped" | "paper_recorded" | "prepared_not_broadcast";
-  readonly reason?: DecisionReason | "no_trade";
+  readonly broadcast: boolean;
+  readonly status: "skipped" | "paper_recorded" | "prepared_not_broadcast" | "broadcast";
+  readonly reason?: DecisionReason | "no_trade" | string;
   readonly decision: StrategyDecision;
+  readonly details?: RedactedPredictFunOrderDetails;
 }

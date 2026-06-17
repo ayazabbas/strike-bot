@@ -12,6 +12,7 @@ import type { StrategySkill } from "./strategy/StrategySkill.js";
 import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
 import { PaperExecutor } from "./execution/PaperExecutor.js";
+import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 
 export interface AppDependencies {
   readonly cmc: CmcAdapter;
@@ -23,6 +24,7 @@ export interface AppDependencies {
   readonly strategy: StrategySkill;
   readonly repository: RunRepository;
   readonly paperJournal?: PaperJournal;
+  readonly predictFunOrderExecutor?: PredictFunOrderExecutor;
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
@@ -102,7 +104,6 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     dependencies.predictFunExecutionWallet.getStatus(),
     dependencies.twak.checkReadiness()
   ]);
-  const liveBlockedByTwak = mode === "live" && decision.action === "enter" && !twak.ready;
   const blockedDecision =
     !risk.approved && decision.action === "enter"
       ? {
@@ -112,21 +113,21 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
           runMode: mode,
           createdAt: new Date()
         }
-      : liveBlockedByTwak
-        ? {
-            action: "no_trade" as const,
-            reason: "twak_not_ready" as const,
-            marketId: decision.marketId,
-            runMode: mode,
-            createdAt: new Date()
-          }
-        : decision;
-  const executor = new PaperExecutor();
-  const execution = await executor.execute(blockedDecision, mode);
+      : decision;
+  const execution =
+    mode === "dry_run" || mode === "live"
+      ? await (dependencies.predictFunOrderExecutor ?? new PredictFunOrderExecutor(config)).execute(blockedDecision, mode, {
+          selectedMarket: selectedMarket?.market,
+          pricing,
+          risk
+        })
+      : await new PaperExecutor().execute(blockedDecision, mode);
   await dependencies.repository.recordExecution(run.id, execution);
   const safety = {
-    signing: false,
-    broadcasting: false
+    signing:
+      blockedDecision.action === "enter" &&
+      (execution.status === "prepared_not_broadcast" || execution.status === "broadcast"),
+    broadcasting: execution.broadcast
   };
 
   if (mode === "paper") {

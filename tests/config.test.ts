@@ -25,6 +25,7 @@ describe("config", () => {
     expect(config.strategyMinEdge).toBe(0.05);
     expect(config.strategyCandleStartToleranceSeconds).toBe(90);
     expect(config.paperJournalPath).toBe("data/paper/trades.jsonl");
+    expect(config.maxTestTradeUsd).toBe(0.1);
   });
 
   it("loads read-only adapter settings from environment names", () => {
@@ -39,7 +40,8 @@ describe("config", () => {
       STRATEGY_DYNAMIC_EDGE_ENABLED: "false",
       STRATEGY_MIN_EDGE: "0.07",
       STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
-      PAPER_JOURNAL_PATH: "tmp/paper.jsonl"
+      PAPER_JOURNAL_PATH: "tmp/paper.jsonl",
+      MAX_TEST_TRADE_USD: "0.05"
     });
 
     expect(config.predictFunApiKey).toBe("predict-test-key");
@@ -53,6 +55,7 @@ describe("config", () => {
     expect(config.strategyMinEdge).toBe(0.07);
     expect(config.strategyCandleStartToleranceSeconds).toBe(45);
     expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
+    expect(config.maxTestTradeUsd).toBe(0.05);
   });
 
   it("loads predict.fun API key from an external file path", () => {
@@ -97,5 +100,9 @@ describe("config", () => {
 
   it("rejects unsafe or unsupported run modes", () => {
     expect(() => loadConfig({ RUN_MODE: "mainnet_send" })).toThrow();
+  });
+
+  it("rejects test-trade caps over ten cents", () => {
+    expect(() => loadConfig({ MAX_TEST_TRADE_USD: "0.11" })).toThrow();
   });
 });
