@@ -1,6 +1,7 @@
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
+import { PredictFunSdkAuthSigner, RestPredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
 import { FilePredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
 import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
@@ -15,6 +16,7 @@ function makeDependencies(config: AppConfig) {
     cmc: new RestCmcAdapter(config),
     pyth: new HistoryPythAdapter(config),
     predictFun: new RestPredictFunAdapter(config),
+    predictFunAuth: new RestPredictFunAuthAdapter(config, new PredictFunSdkAuthSigner(config)),
     predictFunExecutionWallet: new FilePredictFunExecutionWalletAdapter(config),
     twak: new EnvTrustWalletAgentKitAdapter(config),
     strategy:

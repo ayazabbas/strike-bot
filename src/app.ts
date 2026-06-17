@@ -1,6 +1,7 @@
 import type { AppConfig, RunMode } from "./config.js";
 import type { CmcAdapter } from "./adapters/CmcAdapter.js";
 import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
+import type { PredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
 import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { PredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
@@ -16,6 +17,7 @@ export interface AppDependencies {
   readonly cmc: CmcAdapter;
   readonly pyth: PythAdapter;
   readonly predictFun: PredictFunAdapter;
+  readonly predictFunAuth: PredictFunAuthAdapter;
   readonly predictFunExecutionWallet: PredictFunExecutionWalletAdapter;
   readonly twak: TrustWalletAgentKitAdapter;
   readonly strategy: StrategySkill;
@@ -24,10 +26,11 @@ export interface AppDependencies {
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
-  const [macro, candle, marketSnapshot, predictFunExecutionWallet, twak] = await Promise.all([
+  const [macro, candle, marketSnapshot, predictFunAuth, predictFunExecutionWallet, twak] = await Promise.all([
     dependencies.cmc.getMacroSnapshot(),
     dependencies.pyth.getBtcFiveMinuteCandleMetadata(),
     dependencies.predictFun.listMarkets(),
+    dependencies.predictFunAuth.checkReadiness({ acquireJwt: true }),
     dependencies.predictFunExecutionWallet.getStatus(),
     dependencies.twak.checkReadiness()
   ]);
@@ -49,6 +52,7 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
     pricing: pricing ?? null,
     funding: {
       predictFunExecutionAddress: predictFunExecutionWallet.address,
+      predictFunAuth,
       predictFunExecutionWallet,
       twakFundingWallet: formatTwakFundingWallet(twak)
     },
@@ -93,7 +97,8 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
   const risk = new RiskManager(config).evaluate(decision);
   await dependencies.repository.recordDecision(run.id, decision);
 
-  const [predictFunExecutionWallet, twak] = await Promise.all([
+  const [predictFunAuth, predictFunExecutionWallet, twak] = await Promise.all([
+    dependencies.predictFunAuth.checkReadiness({ acquireJwt: mode === "dry_run" }),
     dependencies.predictFunExecutionWallet.getStatus(),
     dependencies.twak.checkReadiness()
   ]);
@@ -149,6 +154,7 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     pricing: pricing ?? null,
     funding: {
       predictFunExecutionAddress: predictFunExecutionWallet.address,
+      predictFunAuth,
       predictFunExecutionWallet,
       twakFundingWallet: formatTwakFundingWallet(twak)
     },

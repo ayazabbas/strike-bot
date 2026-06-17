@@ -75,6 +75,20 @@ function dependencies(mode: RunMode, journalRecords: PaperJournalContext[]): App
         };
       }
     },
+    predictFunAuth: {
+      async checkReadiness() {
+        return {
+          accountAddressConfigured: true,
+          accountAddress: "0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55",
+          authMessageEndpointReachable: false,
+          tokenCachePresent: false,
+          jwtAcquisitionStatus: "not_ready" as const,
+          signing: false,
+          broadcasting: false,
+          reasons: ["predict_fun_api_key_missing"]
+        };
+      }
+    },
     predictFunExecutionWallet: {
       async getStatus() {
         return {
@@ -145,6 +159,13 @@ describe("tick paper journal", () => {
 
     expect(result.funding).toMatchObject({
       predictFunExecutionAddress: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      predictFunAuth: {
+        accountAddressConfigured: true,
+        accountAddress: "0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55",
+        authMessageEndpointReachable: false,
+        tokenCachePresent: false,
+        jwtAcquisitionStatus: "not_ready"
+      },
       predictFunExecutionWallet: {
         configured: true,
         signing: false,

@@ -30,10 +30,11 @@ export const configSchema = z.object({
   pythHistorySymbol: z.string().min(1).default("Crypto.BTC/USD"),
   pythHistoryLookbackMinutes: z.coerce.number().int().positive().max(24 * 60).default(60),
   predictFunBaseUrl: z.string().url().default("https://api.predict.fun"),
+  predictFunAccountAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/).default("0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55"),
   predictFunApiKey: optionalSecret,
   predictFunApiKeyFile: optionalSecret,
   predictFunPrivyKeyFile: z.string().min(1).default(resolve(homedir(), ".predict_privy_key")),
-  predictFunAuthTokenFile: optionalSecret,
+  predictFunJwtCacheFile: z.string().min(1).default(resolve(homedir(), ".predict_fun_jwt")),
   predictFunMinSecondsBeforeClose: z.coerce.number().int().nonnegative().default(60),
   strategySkill: z.enum(["noop", "momentum"]).default("noop"),
   strategyDynamicEdgeEnabled: booleanFromEnv.default(true),
@@ -59,7 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       ? env.PREDICT_FUN_API_KEY
       : readOptionalSecretFile(predictFunApiKeyFile);
   const predictFunPrivyKeyFile = resolveSecretFilePath(env.PREDICT_FUN_PRIVY_KEY_FILE) ?? resolve(homedir(), ".predict_privy_key");
-  const predictFunAuthTokenFile = resolveSecretFilePath(env.PREDICT_FUN_AUTH_TOKEN_FILE);
+  const predictFunJwtCacheFile = resolveSecretFilePath(env.PREDICT_FUN_JWT_CACHE_FILE) ?? resolve(homedir(), ".predict_fun_jwt");
 
   return configSchema.parse({
     runMode: env.RUN_MODE,
@@ -70,10 +71,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     pythHistorySymbol: env.PYTH_HISTORY_SYMBOL,
     pythHistoryLookbackMinutes: env.PYTH_HISTORY_LOOKBACK_MINUTES,
     predictFunBaseUrl: env.PREDICT_FUN_BASE_URL,
+    predictFunAccountAddress: env.PREDICT_FUN_ACCOUNT_ADDRESS,
     predictFunApiKey,
     predictFunApiKeyFile,
     predictFunPrivyKeyFile,
-    predictFunAuthTokenFile,
+    predictFunJwtCacheFile,
     predictFunMinSecondsBeforeClose: env.PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE,
     strategySkill: env.STRATEGY_SKILL,
     strategyDynamicEdgeEnabled: env.STRATEGY_DYNAMIC_EDGE_ENABLED,

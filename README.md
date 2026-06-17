@@ -76,10 +76,11 @@ PYTH_HISTORY_CHANNEL=real_time
 PYTH_HISTORY_SYMBOL=Crypto.BTC/USD
 PYTH_HISTORY_LOOKBACK_MINUTES=60
 PREDICT_FUN_BASE_URL=https://api.predict.fun
+PREDICT_FUN_ACCOUNT_ADDRESS=0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55
 PREDICT_FUN_API_KEY=
 PREDICT_FUN_API_KEY_FILE=~/.pfkey
 PREDICT_FUN_PRIVY_KEY_FILE=~/.predict_privy_key
-PREDICT_FUN_AUTH_TOKEN_FILE=
+PREDICT_FUN_JWT_CACHE_FILE=~/.predict_fun_jwt
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
 STRATEGY_SKILL=noop # noop|momentum
 STRATEGY_DYNAMIC_EDGE_ENABLED=true
@@ -101,7 +102,9 @@ LOG_LEVEL=info
 LIVE_TRADING_APPROVED=false
 ```
 
-The predict.fun execution wallet is the Privy private key stored outside the repo, defaulting to `~/.predict_privy_key` via `PREDICT_FUN_PRIVY_KEY_FILE`. The bot may derive and print only the execution wallet address in inspect output; it must never print or persist the private key. `PREDICT_FUN_AUTH_TOKEN_FILE` is reserved as an external-file placeholder for future predict.fun authentication details and should also point outside the repository.
+The predict.fun Predict account defaults to `0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55` via `PREDICT_FUN_ACCOUNT_ADDRESS`. The predict.fun execution wallet is the Privy private key stored outside the repo, defaulting to `~/.predict_privy_key` via `PREDICT_FUN_PRIVY_KEY_FILE`. The bot may derive and print only the execution wallet address in inspect output; it must never print or persist the private key.
+
+Official predict.fun REST auth is scaffolded through `GET /v1/auth/message` with `x-api-key`, Predict-account message signing, then `POST /v1/auth` with `{ signer, message, signature }`. The returned JWT is cached outside the repository at `PREDICT_FUN_JWT_CACHE_FILE`, defaulting to `~/.predict_fun_jwt`. Inspect reports only readiness fields: account address configured, auth-message endpoint reachability, token-cache presence, and JWT acquisition status. It never prints the API key, private key, signature, or JWT. Auth signing is limited to this Predict-account auth message and does not create, sign, or broadcast transactions.
 
 TWAK is treated as the funding/treasury wallet layer, separate from predict.fun execution signing. Inspect output reports TWAK funding readiness independently, including whether TWAK credentials, CLI, and BSC RPC are ready, and whether an agent wallet address and password source are configured. This readiness reporting does not transfer funds, sign, or broadcast transactions.
 
@@ -133,7 +136,7 @@ RUN_MODE=dry_run npm run tick
 
 Expected early behavior:
 
-- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, the derived predict.fun execution wallet address when `PREDICT_FUN_PRIVY_KEY_FILE` is present, and separate TWAK funding wallet readiness. It does not sign, transfer funds, or broadcast.
+- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, predict.fun REST auth readiness, the derived predict.fun execution wallet address when `PREDICT_FUN_PRIVY_KEY_FILE` is present, and separate TWAK funding wallet readiness. It may sign only the predict.fun auth message if API key, Predict account, Privy key, official SDK, and JWT cache path are ready; it does not sign transactions, transfer funds, or broadcast.
 - `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` by default and appends it to the paper JSONL journal; `STRATEGY_SKILL=momentum RUN_MODE=paper npm run tick` enables Phase-1 momentum paper decisions with market-start, candle-match, fair-threshold, ask, and edge metadata.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, and `LIVE_TRADING_APPROVED=true` is explicitly set.
 

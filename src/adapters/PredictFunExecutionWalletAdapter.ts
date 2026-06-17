@@ -50,7 +50,7 @@ export function deriveEthereumAddress(privateKey: Buffer): string {
   return toChecksumAddress(addressHex);
 }
 
-function normalizePrivateKey(raw: string): Buffer {
+export function normalizePrivateKey(raw: string): Buffer {
   const trimmed = raw.trim();
   const match = /(?:^|\s)(?:0x)?([0-9a-fA-F]{64})(?:\s|$)/.exec(trimmed);
   if (!match) {

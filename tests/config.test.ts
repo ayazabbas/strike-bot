@@ -17,8 +17,9 @@ describe("config", () => {
     expect(config.pythHistorySymbol).toBe("Crypto.BTC/USD");
     expect(config.pythHistoryLookbackMinutes).toBe(60);
     expect(config.predictFunMinSecondsBeforeClose).toBe(60);
+    expect(config.predictFunAccountAddress).toBe("0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55");
     expect(config.predictFunPrivyKeyFile).toMatch(/\.predict_privy_key$/);
-    expect(config.predictFunAuthTokenFile).toBeUndefined();
+    expect(config.predictFunJwtCacheFile).toMatch(/\.predict_fun_jwt$/);
     expect(config.strategySkill).toBe("noop");
     expect(config.strategyDynamicEdgeEnabled).toBe(true);
     expect(config.strategyMinEdge).toBe(0.05);
@@ -31,8 +32,9 @@ describe("config", () => {
       PREDICT_FUN_API_KEY: "predict-test-key",
       PYTH_HISTORY_LOOKBACK_MINUTES: "30",
       PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE: "90",
+      PREDICT_FUN_ACCOUNT_ADDRESS: "0x0000000000000000000000000000000000000001",
       PREDICT_FUN_PRIVY_KEY_FILE: "~/predict-privy-test-key",
-      PREDICT_FUN_AUTH_TOKEN_FILE: "/tmp/predict-auth-token",
+      PREDICT_FUN_JWT_CACHE_FILE: "/tmp/predict-fun-jwt",
       STRATEGY_SKILL: "momentum",
       STRATEGY_DYNAMIC_EDGE_ENABLED: "false",
       STRATEGY_MIN_EDGE: "0.07",
@@ -43,8 +45,9 @@ describe("config", () => {
     expect(config.predictFunApiKey).toBe("predict-test-key");
     expect(config.pythHistoryLookbackMinutes).toBe(30);
     expect(config.predictFunMinSecondsBeforeClose).toBe(90);
+    expect(config.predictFunAccountAddress).toBe("0x0000000000000000000000000000000000000001");
     expect(config.predictFunPrivyKeyFile).toMatch(/predict-privy-test-key$/);
-    expect(config.predictFunAuthTokenFile).toBe("/tmp/predict-auth-token");
+    expect(config.predictFunJwtCacheFile).toBe("/tmp/predict-fun-jwt");
     expect(config.strategySkill).toBe("momentum");
     expect(config.strategyDynamicEdgeEnabled).toBe(false);
     expect(config.strategyMinEdge).toBe(0.07);

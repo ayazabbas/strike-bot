@@ -116,8 +116,8 @@ Gaps to close:
    - Latest rule is configured manually, not produced by a CMC Strategy Skill and clamped by policy.
 4. **TWAK funding ops are readiness-only.**
    - Need balance checks, transfer/deposit planning, and live-gated funding operations.
-5. **predict.fun live trading is still blocked by Privy/predict.fun auth.**
-   - Signing key is available, but GraphQL `createOrder` needs a Privy/predict.fun bearer/session token.
+5. **predict.fun live trading still needs REST auth and order-path validation.**
+   - REST JWT auth is scaffolded, but live credentials, official SDK signer shape, and order submission remain unvalidated.
 6. **Wallet registration decision is unresolved for Track 1 scoring.**
    - Need decide whether judging tracks the registered ERC-8004 owner wallet, the trading wallet, or arbitrary submitted wallet(s).
 7. **Track 2 Agent Skill package is not authored/submitted.**
@@ -543,17 +543,16 @@ export interface CmcAgentHubSnapshot {
 - `RUN_MODE=signed_dry_run` required for local signature generation.
 - Never print signatures unless explicitly useful; signatures are not private keys but still avoid leaking in routine logs.
 
-#### Task F3: Resolve predict.fun auth blocker
+#### Task F3: Validate predict.fun REST auth scaffolding
 
-**Objective:** Obtain a valid predict.fun/Privy auth path for `createOrder`.
+**Objective:** Validate the official predict.fun REST auth path before any order submission.
 
-**Current blocker:** GraphQL `loginWithPrivy` failed without `Privy-Authentication` header. `createOrder` likely requires a Privy bearer/JWT/session.
+**Current status:** REST auth scaffolding uses `GET /v1/auth/message` with `x-api-key`, signs the returned Predict account message, posts `{ signer, message, signature }` to `POST /v1/auth`, and caches the returned JWT outside the repo at `PREDICT_FUN_JWT_CACHE_FILE`.
 
-**Options:**
-1. Official predict.fun trading API credentials/docs.
-2. User-provided reusable browser/session token saved to `PREDICT_FUN_AUTH_TOKEN_FILE`.
-3. Headless Privy login if allowed and stable.
-4. Link/import TWAK wallet into predict.fun if possible, solving both TWAK execution and PnL-scoring alignment.
+**Remaining validation:**
+1. Confirm the installed official SDK exposes `OrderBuilder.make(ChainId.BnbMainnet, wallet, { predictAccount })` and `signPredictAccountMessage(message)`.
+2. Confirm the JWT response field name against live credentials.
+3. Link/import TWAK wallet into predict.fun if possible, solving both TWAK execution and PnL-scoring alignment.
 
 #### Task F4: Add live order submission gate
 
@@ -562,7 +561,7 @@ export interface CmcAgentHubSnapshot {
 **Required gates:**
 - `RUN_MODE=live`
 - `LIVE_TRADING_APPROVED=true`
-- valid predict.fun auth token/session
+- valid predict.fun JWT from the official `/v1/auth/message` → `/v1/auth` flow
 - max drawdown not hit
 - max order size enforced
 - market close guard
@@ -650,7 +649,7 @@ CMC Agent Hub → Strategy Skill/Tuner → Agent Loop → Risk Manager → predi
 - CMC MCP/API key location if not already configured.
 - Organizer answer on ERC-8004 wallet vs trading wallet/PnL scoring.
 - Whether Ayaz wants any mainnet registration broadcast before all live-trading blockers are solved.
-- predict.fun auth token/session or official trading API docs.
+- predict.fun JWT from the official API-key + Predict-account signing flow.
 - Funding amount and explicit approval if we move money from TWAK to predict.fun execution wallet.
 - Public endpoint/domain for agent status/profile URI, unless we use IPFS/static JSON.
 
