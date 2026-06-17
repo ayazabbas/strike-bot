@@ -78,6 +78,8 @@ PYTH_HISTORY_LOOKBACK_MINUTES=60
 PREDICT_FUN_BASE_URL=https://api.predict.fun
 PREDICT_FUN_API_KEY=
 PREDICT_FUN_API_KEY_FILE=~/.pfkey
+PREDICT_FUN_PRIVY_KEY_FILE=~/.predict_privy_key
+PREDICT_FUN_AUTH_TOKEN_FILE=
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
 STRATEGY_SKILL=noop # noop|momentum
 STRATEGY_DYNAMIC_EDGE_ENABLED=true
@@ -86,7 +88,10 @@ STRATEGY_CANDLE_START_TOLERANCE_SECONDS=90
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
 TWAK_ACCESS_ID=
-TWAK_HMAC_SECRET=
+TWAK_HMAC_SECRET=***
+TWAK_AGENT_WALLET_ADDRESS=
+TWAK_WALLET_PASSWORD=
+TWAK_WALLET_PASSWORD_FILE=
 BSC_RPC_URL=
 DATABASE_PATH=./data/strike-bot.sqlite
 PAPER_JOURNAL_PATH=data/paper/trades.jsonl
@@ -96,7 +101,9 @@ LOG_LEVEL=info
 LIVE_TRADING_APPROVED=false
 ```
 
-If a wallet private key is ever needed for local development fallback, it must come from an environment variable or untracked local secret file outside the repository. Prefer TWAK-backed signing for hackathon alignment.
+The predict.fun execution wallet is the Privy private key stored outside the repo, defaulting to `~/.predict_privy_key` via `PREDICT_FUN_PRIVY_KEY_FILE`. The bot may derive and print only the execution wallet address in inspect output; it must never print or persist the private key. `PREDICT_FUN_AUTH_TOKEN_FILE` is reserved as an external-file placeholder for future predict.fun authentication details and should also point outside the repository.
+
+TWAK is treated as the funding/treasury wallet layer, separate from predict.fun execution signing. Inspect output reports TWAK funding readiness independently, including whether TWAK credentials, CLI, and BSC RPC are ready, and whether an agent wallet address and password source are configured. This readiness reporting does not transfer funds, sign, or broadcast transactions.
 
 For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file outside this repository. When `PREDICT_FUN_API_KEY` is not set, the bot reads `PREDICT_FUN_API_KEY_FILE`; if that variable is also unset, it uses `~/.pfkey` only when the file exists. The key is used only for request headers and is not printed in inspect or tick output.
 
@@ -126,7 +133,7 @@ RUN_MODE=dry_run npm run tick
 
 Expected early behavior:
 
-- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, and TWAK readiness.
+- `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, the derived predict.fun execution wallet address when `PREDICT_FUN_PRIVY_KEY_FILE` is present, and separate TWAK funding wallet readiness. It does not sign, transfer funds, or broadcast.
 - `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` by default and appends it to the paper JSONL journal; `STRATEGY_SKILL=momentum RUN_MODE=paper npm run tick` enables Phase-1 momentum paper decisions with market-start, candle-match, fair-threshold, ask, and edge metadata.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, and `LIVE_TRADING_APPROVED=true` is explicitly set.
 

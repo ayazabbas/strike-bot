@@ -32,6 +32,8 @@ export const configSchema = z.object({
   predictFunBaseUrl: z.string().url().default("https://api.predict.fun"),
   predictFunApiKey: optionalSecret,
   predictFunApiKeyFile: optionalSecret,
+  predictFunPrivyKeyFile: z.string().min(1).default(resolve(homedir(), ".predict_privy_key")),
+  predictFunAuthTokenFile: optionalSecret,
   predictFunMinSecondsBeforeClose: z.coerce.number().int().nonnegative().default(60),
   strategySkill: z.enum(["noop", "momentum"]).default("noop"),
   strategyDynamicEdgeEnabled: booleanFromEnv.default(true),
@@ -56,6 +58,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     env.PREDICT_FUN_API_KEY && env.PREDICT_FUN_API_KEY.trim().length > 0
       ? env.PREDICT_FUN_API_KEY
       : readOptionalSecretFile(predictFunApiKeyFile);
+  const predictFunPrivyKeyFile = resolveSecretFilePath(env.PREDICT_FUN_PRIVY_KEY_FILE) ?? resolve(homedir(), ".predict_privy_key");
+  const predictFunAuthTokenFile = resolveSecretFilePath(env.PREDICT_FUN_AUTH_TOKEN_FILE);
 
   return configSchema.parse({
     runMode: env.RUN_MODE,
@@ -68,6 +72,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     predictFunBaseUrl: env.PREDICT_FUN_BASE_URL,
     predictFunApiKey,
     predictFunApiKeyFile,
+    predictFunPrivyKeyFile,
+    predictFunAuthTokenFile,
     predictFunMinSecondsBeforeClose: env.PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE,
     strategySkill: env.STRATEGY_SKILL,
     strategyDynamicEdgeEnabled: env.STRATEGY_DYNAMIC_EDGE_ENABLED,
@@ -90,7 +96,7 @@ function defaultPredictFunApiKeyFile(): string | undefined {
   return existsSync(candidate) ? candidate : undefined;
 }
 
-function resolveSecretFilePath(value: string | undefined): string | undefined {
+export function resolveSecretFilePath(value: string | undefined): string | undefined {
   if (!value || value.trim().length === 0) {
     return undefined;
   }

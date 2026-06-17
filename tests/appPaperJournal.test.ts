@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { settlePaperJournal, tick } from "../src/app.js";
+import { inspect, settlePaperJournal, tick } from "../src/app.js";
 import type { AppDependencies } from "../src/app.js";
 import type { PaperJournalContext } from "../src/storage/PaperJournal.js";
 import type { RunMode } from "../src/config.js";
@@ -75,9 +75,29 @@ function dependencies(mode: RunMode, journalRecords: PaperJournalContext[]): App
         };
       }
     },
+    predictFunExecutionWallet: {
+      async getStatus() {
+        return {
+          configured: true,
+          address: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+          keyFile: "/tmp/predict-privy-key",
+          signing: false,
+          broadcasting: false,
+          reasons: []
+        };
+      }
+    },
     twak: {
       async checkReadiness() {
-        return { enabled: true, ready: false, reasons: ["twak_credentials_missing"] };
+        return {
+          enabled: true,
+          ready: false,
+          credentialsCliRpcReady: false,
+          agentWalletConfigured: false,
+          agentWalletPasswordAvailable: false,
+          address: null,
+          reasons: ["twak_credentials_missing"]
+        };
       }
     },
     strategy: {
@@ -119,6 +139,28 @@ function dependencies(mode: RunMode, journalRecords: PaperJournalContext[]): App
 }
 
 describe("tick paper journal", () => {
+  it("includes separated execution and TWAK funding wallet status in inspect output", async () => {
+    const records: PaperJournalContext[] = [];
+    const result = await inspect(loadConfig({}), dependencies("inspect", records));
+
+    expect(result.funding).toMatchObject({
+      predictFunExecutionAddress: "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+      predictFunExecutionWallet: {
+        configured: true,
+        signing: false,
+        broadcasting: false
+      },
+      twakFundingWallet: {
+        ready: false,
+        credentialsCliRpcReady: false,
+        agentWalletConfigured: false,
+        agentWalletPasswordAvailable: false,
+        address: null
+      }
+    });
+    expect(result.safety).toEqual({ signing: false, broadcasting: false });
+  });
+
   it("appends one paper journal record per paper tick", async () => {
     const records: PaperJournalContext[] = [];
     await tick(loadConfig({ RUN_MODE: "paper" }), dependencies("paper", records), "paper");

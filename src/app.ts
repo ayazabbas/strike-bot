@@ -3,6 +3,7 @@ import type { CmcAdapter } from "./adapters/CmcAdapter.js";
 import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
+import type { PredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
 import type { RunRepository } from "./storage/RunRepository.js";
 import type { PaperJournal } from "./storage/PaperJournal.js";
 import { enrichPaperJournalSettlements } from "./storage/PaperJournal.js";
@@ -15,6 +16,7 @@ export interface AppDependencies {
   readonly cmc: CmcAdapter;
   readonly pyth: PythAdapter;
   readonly predictFun: PredictFunAdapter;
+  readonly predictFunExecutionWallet: PredictFunExecutionWalletAdapter;
   readonly twak: TrustWalletAgentKitAdapter;
   readonly strategy: StrategySkill;
   readonly repository: RunRepository;
@@ -22,10 +24,11 @@ export interface AppDependencies {
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
-  const [macro, candle, marketSnapshot, twak] = await Promise.all([
+  const [macro, candle, marketSnapshot, predictFunExecutionWallet, twak] = await Promise.all([
     dependencies.cmc.getMacroSnapshot(),
     dependencies.pyth.getBtcFiveMinuteCandleMetadata(),
     dependencies.predictFun.listMarkets(),
+    dependencies.predictFunExecutionWallet.getStatus(),
     dependencies.twak.checkReadiness()
   ]);
   const btcFiveMinuteMarkets = filterBtcFiveMinuteMarkets(marketSnapshot.markets);
@@ -44,6 +47,11 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
       selected: formatSelectedMarket(selectedMarket)
     },
     pricing: pricing ?? null,
+    funding: {
+      predictFunExecutionAddress: predictFunExecutionWallet.address,
+      predictFunExecutionWallet,
+      twakFundingWallet: formatTwakFundingWallet(twak)
+    },
     twak,
     safety: {
       signing: false,
@@ -85,7 +93,10 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
   const risk = new RiskManager(config).evaluate(decision);
   await dependencies.repository.recordDecision(run.id, decision);
 
-  const twak = await dependencies.twak.checkReadiness();
+  const [predictFunExecutionWallet, twak] = await Promise.all([
+    dependencies.predictFunExecutionWallet.getStatus(),
+    dependencies.twak.checkReadiness()
+  ]);
   const liveBlockedByTwak = mode === "live" && decision.action === "enter" && !twak.ready;
   const blockedDecision =
     !risk.approved && decision.action === "enter"
@@ -136,8 +147,24 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     execution,
     market: formatSelectedMarket(selectedMarket),
     pricing: pricing ?? null,
+    funding: {
+      predictFunExecutionAddress: predictFunExecutionWallet.address,
+      predictFunExecutionWallet,
+      twakFundingWallet: formatTwakFundingWallet(twak)
+    },
     twak,
     safety
+  };
+}
+
+function formatTwakFundingWallet(twak: Awaited<ReturnType<TrustWalletAgentKitAdapter["checkReadiness"]>>) {
+  return {
+    ready: twak.ready,
+    credentialsCliRpcReady: twak.credentialsCliRpcReady,
+    agentWalletConfigured: twak.agentWalletConfigured,
+    agentWalletPasswordAvailable: twak.agentWalletPasswordAvailable,
+    address: twak.address,
+    reasons: twak.reasons
   };
 }
 
