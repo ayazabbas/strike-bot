@@ -1,5 +1,5 @@
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
-import { StubCmcAdapter } from "./adapters/CmcAdapter.js";
+import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
@@ -11,7 +11,7 @@ import { inspect, settlePaperJournal, tick } from "./app.js";
 
 function makeDependencies(config: AppConfig) {
   return {
-    cmc: new StubCmcAdapter(),
+    cmc: new RestCmcAdapter(config),
     pyth: new HistoryPythAdapter(config),
     predictFun: new RestPredictFunAdapter(config),
     twak: new EnvTrustWalletAgentKitAdapter(config),

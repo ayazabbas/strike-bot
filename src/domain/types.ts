@@ -81,7 +81,17 @@ export interface MacroSnapshot {
   readonly capturedAt: Date;
   readonly source: "coinmarketcap";
   readonly btcUsd?: number;
+  readonly btc24hChangePct?: number;
+  readonly btc7dChangePct?: number;
+  readonly btcVolumeChange24hPct?: number;
+  readonly ethUsd?: number;
+  readonly eth24hChangePct?: number;
+  readonly eth7dChangePct?: number;
+  readonly bnbUsd?: number;
+  readonly bnb24hChangePct?: number;
+  readonly bnb7dChangePct?: number;
   readonly stubbed: boolean;
+  readonly error?: string;
 }
 
 export interface BtcCandleMetadata {
