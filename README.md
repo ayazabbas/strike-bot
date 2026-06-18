@@ -10,7 +10,7 @@ Initial scope is intentionally narrow:
 - **Macro context:** CoinMarketCap.
 - **Low-timeframe OHLC/reference data:** Pyth Pro.
 - **Wallet/action layer:** Trust Wallet Agent Kit (TWAK) where feasible/required for hackathon alignment.
-- **Strategy:** default is the safe `NoopStrategySkill`; opt in to the Phase-1 momentum paper strategy with `STRATEGY_SKILL=momentum`.
+- **Strategy:** default is the safe `NoopStrategySkill`; opt in to paper/live strategy profiles explicitly. The documented competition profile is the EV + direction ensemble described below.
 
 ## Current objective
 
@@ -24,6 +24,117 @@ Build the execution foundation before strategy work:
 6. Paper mode and dry-run mode.
 7. Mainnet live mode guarded by explicit approval and small-fund limits.
 8. SQLite/local logging for runs, market snapshots, decisions, executions, and positions.
+
+## Competition strategy: EV + direction ensemble
+
+The current competition profile is an **EV + direction ensemble** for BTC 5-minute UP/DOWN markets on predict.fun. It is designed for agent operators who want a mechanically executed strategy that is explainable, testable, and still guarded by paper/dry-run/live safety modes.
+
+At a high level, the model asks two separate questions before it allows a trade:
+
+1. **Is this side mispriced enough to be profitable?**
+2. **Does an independent direction model agree with the side?**
+
+Only when both checks pass does the bot emit a trade decision.
+
+### Inputs
+
+The strategy uses information available at the current decision time only:
+
+- current predict.fun UP/DOWN ask and bid prices;
+- current spread, implied mid, and book overround/underround;
+- Pyth BTC low-timeframe candle features;
+- intra-window momentum and volatility features;
+- time-of-day features for the EV model.
+
+The core technical feature set includes:
+
+- elapsed time in the 5-minute market;
+- partial return inside the current market window;
+- 1-minute return, candle body, and range;
+- rolling 5-minute return;
+- 15-minute realized volatility;
+- ATR(14);
+- Bollinger width(20) only;
+- EMA 9/21/50/200 level, distance, and slope;
+- RSI 7/14/21.
+
+We intentionally keep the public competition profile simple. Bollinger **position** features such as `%B`, upper/lower distance, and squeeze percentiles were tested in research but are not part of the current recommended competition model because they did not improve the main fill-stressed profile.
+
+### Model construction
+
+The ensemble has two components:
+
+1. **Profitability / EV model**
+
+   Each market snapshot is expanded into two candidate actions: buy UP at the current UP ask, or buy DOWN at the current DOWN ask. A gradient-boosted profitability model estimates whether each candidate would have been profitable at settlement.
+
+   For each side:
+
+   ```text
+   predicted_ev = predicted_profit_probability - entry_ask
+   ```
+
+   In binary UP/DOWN markets, a winning share pays 1 and a losing share pays 0, so this is the natural edge estimate before execution costs.
+
+2. **Direction model**
+
+   A separate logistic direction model estimates the probability that the BTC 5-minute window settles UP. It then converts that probability into side-specific direction edge:
+
+   ```text
+   up_direction_edge = P(up) - up_ask
+   down_direction_edge = (1 - P(up)) - down_ask
+   ```
+
+   The ensemble keeps only the side with the better direction edge for that snapshot. This prevents the EV model from taking a side that the independent direction model does not support.
+
+### Competition rule profile
+
+The current recommended competition profile is the fill-stressed EV + direction ensemble:
+
+```text
+profitability_probability >= 0.45
+entry_ask <= 0.55
+predicted_ev >= 0.01
+direction_edge >= 0.20
+fill_stress = +0.03
+max_trades_per_market = 1
+exit_policy = hold_to_settlement
+```
+
+The `+0.03` fill stress means research validation scores each historical entry as if the bot paid 3 cents worse than the observed ask. This is deliberately conservative: it favors strategies that survive execution friction instead of strategies that only work with optimistic fills.
+
+Backtest summary on the May+June PMXT/predict.fun proxy dataset:
+
+- trades: **612**
+- PnL: **+83.97 units**
+- ROI: **27.35%**
+- hit rate: **63.89%**
+- positive walk-forward splits: **5/5**
+- minimum split ROI: **6.77%**
+
+These figures are research validation metrics, not a profit guarantee. Live results depend on market availability, spreads, quote freshness, minimum order sizes, latency, and actual fills.
+
+### Session behavior
+
+This profile is **not hard-coded by trading session**. It does not use separate Asia/Europe/US models or separate thresholds per session.
+
+The profitability model does include cyclic calendar features:
+
+- UTC hour sine/cosine;
+- day-of-week sine/cosine.
+
+That lets the model learn broad time-of-day behavior without creating separate session routers. Session-specific variants were tested separately, but the current public competition profile stays global for simplicity and robustness.
+
+### Entry and exit behavior
+
+The competition profile is entry-only and holds positions to settlement. Early-exit rules were tested, including take-profit, stop-loss, and trailing-stop variants. They did not improve the high-volume historical strategy enough to justify adding active exit logic to the competition profile.
+
+For agent operators, the recommended workflow is:
+
+1. run `inspect` to verify market data and credential readiness;
+2. run the strategy in `paper` until the journal shows clean market selection and pricing;
+3. run `dry_run` to verify order construction without posting;
+4. enable `live` only with explicit operator approval and small risk caps.
 
 ## Runtime modes
 
