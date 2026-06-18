@@ -230,6 +230,16 @@ export interface BtcCandleMetadata {
 export interface StrategyDecisionMetadata {
   readonly strategyName?: string;
   readonly triggerName?: string;
+  readonly sourceCapturedAt?: string;
+  readonly signalAgeSeconds?: number;
+  readonly predictedProfitProbability?: number;
+  readonly evEdge?: number;
+  readonly directionEdge?: number;
+  readonly directionProbability?: number;
+  readonly rawAskPrice?: number;
+  readonly currentAskPrice?: number;
+  readonly signalTiming?: Readonly<Record<string, string | number | boolean | null>>;
+  readonly thresholds?: Readonly<Record<string, string | number | boolean | null>>;
   readonly fairThreshold?: number;
   readonly maxAcceptableAsk?: number;
   readonly askPrice?: number;

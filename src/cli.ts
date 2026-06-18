@@ -11,6 +11,7 @@ import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
+import { SignalJournalStrategySkill } from "./strategy/SignalJournalStrategySkill.js";
 import {
   inspect,
   inspectPositions,
@@ -29,19 +30,32 @@ function makeDependencies(config: AppConfig) {
     predictFunAuth: new RestPredictFunAuthAdapter(config, new PredictFunSdkAuthSigner(config)),
     predictFunExecutionWallet: new FilePredictFunExecutionWalletAdapter(config),
     twak: new EnvTrustWalletAgentKitAdapter(config),
-    strategy:
-      config.strategySkill === "momentum"
-        ? new MomentumStrategySkill({
-            ...(config.strategyDynamicEdgeEnabled ? {} : { minEdge: config.strategyMinEdge }),
-            notionalUsd: config.strategyNotionalUsd,
-            candleStartToleranceSeconds: config.strategyCandleStartToleranceSeconds
-          })
-        : new NoopStrategySkill(),
+    strategy: makeStrategy(config),
     repository: new NoopSqliteRunRepository(config.databasePath),
     paperJournal: new JsonlPaperJournal(config.paperJournalPath),
     predictFunOrderExecutor: new PredictFunOrderExecutor(config),
     predictFunPositions: new RestPredictFunPositionsAdapter(config)
   };
+}
+
+function makeStrategy(config: AppConfig) {
+  if (config.strategySkill === "momentum") {
+    return new MomentumStrategySkill({
+      ...(config.strategyDynamicEdgeEnabled ? {} : { minEdge: config.strategyMinEdge }),
+      notionalUsd: config.strategyNotionalUsd,
+      candleStartToleranceSeconds: config.strategyCandleStartToleranceSeconds
+    });
+  }
+
+  if (config.strategySkill === "signal") {
+    return new SignalJournalStrategySkill({
+      journalPath: config.strategySignalJournalPath,
+      maxAgeSeconds: config.strategySignalMaxAgeSeconds,
+      notionalUsd: config.strategyNotionalUsd
+    });
+  }
+
+  return new NoopStrategySkill();
 }
 
 function safeJson(value: unknown): string {

@@ -22,6 +22,10 @@ describe("config", () => {
     expect(config.predictFunPrivyKeyFile).toMatch(/\.predict_privy_key$/);
     expect(config.predictFunJwtCacheFile).toMatch(/\.predict_fun_jwt$/);
     expect(config.strategySkill).toBe("noop");
+    expect(config.strategySignalJournalPath).toBe(
+      "/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl"
+    );
+    expect(config.strategySignalMaxAgeSeconds).toBe(10);
     expect(config.strategyDynamicEdgeEnabled).toBe(true);
     expect(config.strategyMinEdge).toBe(0.05);
     expect(config.strategyCandleStartToleranceSeconds).toBe(90);
@@ -37,7 +41,9 @@ describe("config", () => {
       PREDICT_FUN_ACCOUNT_ADDRESS: "0x0000000000000000000000000000000000000001",
       PREDICT_FUN_PRIVY_KEY_FILE: "~/predict-privy-test-key",
       PREDICT_FUN_JWT_CACHE_FILE: "/tmp/predict-fun-jwt",
-      STRATEGY_SKILL: "momentum",
+      STRATEGY_SKILL: "signal",
+      STRATEGY_SIGNAL_JOURNAL_PATH: "/tmp/live-ev-signals.jsonl",
+      STRATEGY_SIGNAL_MAX_AGE_SECONDS: "7",
       STRATEGY_DYNAMIC_EDGE_ENABLED: "false",
       STRATEGY_MIN_EDGE: "0.07",
       STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
@@ -52,7 +58,9 @@ describe("config", () => {
     expect(config.predictFunAccountAddress).toBe("0x0000000000000000000000000000000000000001");
     expect(config.predictFunPrivyKeyFile).toMatch(/predict-privy-test-key$/);
     expect(config.predictFunJwtCacheFile).toBe("/tmp/predict-fun-jwt");
-    expect(config.strategySkill).toBe("momentum");
+    expect(config.strategySkill).toBe("signal");
+    expect(config.strategySignalJournalPath).toBe("/tmp/live-ev-signals.jsonl");
+    expect(config.strategySignalMaxAgeSeconds).toBe(7);
     expect(config.strategyDynamicEdgeEnabled).toBe(false);
     expect(config.strategyMinEdge).toBe(0.07);
     expect(config.strategyCandleStartToleranceSeconds).toBe(45);

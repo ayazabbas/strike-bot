@@ -194,7 +194,9 @@ PREDICT_FUN_API_KEY_FILE=~/.pfkey
 PREDICT_FUN_PRIVY_KEY_FILE=~/.predict_privy_key
 PREDICT_FUN_JWT_CACHE_FILE=~/.predict_fun_jwt
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
-STRATEGY_SKILL=noop # noop|momentum
+STRATEGY_SKILL=noop # noop|momentum|signal
+STRATEGY_SIGNAL_JOURNAL_PATH=/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl
+STRATEGY_SIGNAL_MAX_AGE_SECONDS=10
 STRATEGY_DYNAMIC_EDGE_ENABLED=true
 STRATEGY_MIN_EDGE=0.05 # fallback when STRATEGY_DYNAMIC_EDGE_ENABLED=false
 STRATEGY_NOTIONAL_USD=0.05
@@ -236,6 +238,8 @@ For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file out
 `STRATEGY_DYNAMIC_EDGE_ENABLED=true` makes `MomentumStrategySkill` scale the required edge continuously by time elapsed in the selected 5-minute market, linearly from 6% at market start to 1% at expiry. This keeps early entries selective while allowing progressively smaller edges closer to expiry. Set `STRATEGY_DYNAMIC_EDGE_ENABLED=false` to use the uniform `STRATEGY_MIN_EDGE` fallback.
 
 `STRATEGY_CANDLE_START_TOLERANCE_SECONDS` controls how far the latest Pyth candle `openTime` may differ from the selected predict.fun market `startsAt` before `MomentumStrategySkill` refuses to trade with `candle_market_mismatch`. The default is 90 seconds because predict.fun settles from Chainlink while Pyth is reference data. `MomentumStrategySkill` also refuses to enter before `selectedMarket.startsAt` with `market_not_started`.
+
+`STRATEGY_SKILL=signal` enables `SignalJournalStrategySkill`, a production bridge from the strike-bot-research EV + direction paper signal journal into deterministic TypeScript `StrategyDecision` output. It reads only the latest non-empty JSONL row from `STRATEGY_SIGNAL_JOURNAL_PATH`, defaulting to `/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl`, and refuses stale rows older than `STRATEGY_SIGNAL_MAX_AGE_SECONDS` seconds. It enters only when the latest row is a safe `signals` row with `safety.signing=false`, `safety.broadcasting=false`, a matching selected OPEN market, available predict.fun pricing, and current ask no more than 0.03 above the model's raw ask. The signal notional is capped by `STRATEGY_NOTIONAL_USD`; live execution remains separately gated by approvals, TWAK readiness, risk checks, and `MAX_TEST_TRADE_USD`.
 
 `RUN_MODE=paper npm run tick` appends one structured JSONL paper-trading record per tick to `PAPER_JOURNAL_PATH`, defaulting to `data/paper/trades.jsonl`. The generated `data/` tree is ignored by git. Records include run/timestamp, selected BTC 5-minute market, decision and strategy metadata, predict.fun pricing, Pyth candle fields, paper fill details, safety flags, and settlement placeholders initialized to `unknown`/`null`. They intentionally do not include API keys, wallet material, or raw environment configuration. See `docs/paper-journal.md` for the schema and analysis examples.
 

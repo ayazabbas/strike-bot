@@ -36,7 +36,12 @@ export const configSchema = z.object({
   predictFunPrivyKeyFile: z.string().min(1).default(resolve(homedir(), ".predict_privy_key")),
   predictFunJwtCacheFile: z.string().min(1).default(resolve(homedir(), ".predict_fun_jwt")),
   predictFunMinSecondsBeforeClose: z.coerce.number().int().nonnegative().default(60),
-  strategySkill: z.enum(["noop", "momentum"]).default("noop"),
+  strategySkill: z.enum(["noop", "momentum", "signal"]).default("noop"),
+  strategySignalJournalPath: z
+    .string()
+    .min(1)
+    .default("/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl"),
+  strategySignalMaxAgeSeconds: z.coerce.number().int().positive().default(10),
   strategyDynamicEdgeEnabled: booleanFromEnv.default(true),
   strategyMinEdge: z.coerce.number().nonnegative().max(1).default(0.05),
   strategyNotionalUsd: z.coerce.number().positive().max(5).default(0.05),
@@ -81,6 +86,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     predictFunJwtCacheFile,
     predictFunMinSecondsBeforeClose: env.PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE,
     strategySkill: env.STRATEGY_SKILL,
+    strategySignalJournalPath: env.STRATEGY_SIGNAL_JOURNAL_PATH,
+    strategySignalMaxAgeSeconds: env.STRATEGY_SIGNAL_MAX_AGE_SECONDS,
     strategyDynamicEdgeEnabled: env.STRATEGY_DYNAMIC_EDGE_ENABLED,
     strategyMinEdge: env.STRATEGY_MIN_EDGE,
     strategyNotionalUsd: env.STRATEGY_NOTIONAL_USD,
