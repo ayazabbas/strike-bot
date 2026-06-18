@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "strategyFamily": "prediction_market_ev_hgb",
+  "market": "BTC_5M_UP_DOWN",
+  "regime": {
+    "macroBias": "bullish",
+    "volatilityRegime": "normal",
+    "confidence": 0.9,
+    "validForMinutes": 60
+  },
+  "parameterDeltas": {
+    "probabilityThresholdDelta": -0.01,
+    "maxEntryPriceDelta": 0.01,
+    "minEvEdgeDelta": -0.005,
+    "maxNotionalMultiplier": 1.2
+  },
+  "riskLimits": {
+    "maxTradesPerHour": 6,
+    "maxDailyDrawdownUsd": 10,
+    "maxOpenExposureUsd": 5,
+    "forceNoTrade": false
+  },
+  "reasoning": ["cmc_status=available", "macro_bias=bullish", "volatility_regime=normal"],
+  "backtestSpec": {
+    "features": ["cmc_global_metrics", "cmc_btc_ta", "cmc_derivatives", "pyth_lazer_realtime", "predict_fun_odds"],
+    "labels": "predict_fun_btc_5m_settlement_direction",
+    "executionAssumptions": {
+      "fillPenalty": 0.01,
+      "fees": 0,
+      "slippage": 0.01
+    }
+  }
+}

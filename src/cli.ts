@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
+import { RestCmcAgentHubAdapter } from "./adapters/CmcAgentHubAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import { PredictFunSdkAuthSigner, RestPredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
 import { RestPredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
@@ -38,8 +39,10 @@ function makeDependencies(config: AppConfig) {
         timeoutMs: config.modelInferenceTimeoutMs
       })
     : undefined;
+  const cmc = new RestCmcAdapter(config);
   return {
-    cmc: new RestCmcAdapter(config),
+    cmc,
+    cmcAgentHub: new RestCmcAgentHubAdapter(config, cmc),
     pyth: new HistoryPythAdapter(config),
     predictFun: new RestPredictFunAdapter(config),
     predictFunAuth: new RestPredictFunAuthAdapter(config, new PredictFunSdkAuthSigner(config)),

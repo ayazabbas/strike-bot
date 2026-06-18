@@ -25,6 +25,10 @@ const optionalSecret = z
 export const configSchema = z.object({
   runMode: runModeSchema.default("inspect"),
   cmcApiKey: optionalSecret,
+  cmcMcpUrl: z.string().url().default("https://mcp.coinmarketcap.com/mcp"),
+  cmcMcpApiKey: optionalSecret,
+  cmcMcpApiKeyFile: optionalSecret,
+  cmcAgentHubEnabled: booleanFromEnv.default(false),
   pythProApiKey: optionalSecret,
   pythHistoryBaseUrl: z.string().url().default("https://pyth.dourolabs.app/v1"),
   pythHistoryChannel: z.string().min(1).default("real_time"),
@@ -69,13 +73,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const predictFunApiKey =
     env.PREDICT_FUN_API_KEY && env.PREDICT_FUN_API_KEY.trim().length > 0
       ? env.PREDICT_FUN_API_KEY
-      : readOptionalSecretFile(predictFunApiKeyFile);
+      : readOptionalSecretFile(predictFunApiKeyFile, "predict.fun API key");
+  const cmcMcpApiKeyFile = resolveSecretFilePath(env.CMC_MCP_API_KEY_FILE);
+  const cmcMcpApiKey =
+    env.CMC_MCP_API_KEY && env.CMC_MCP_API_KEY.trim().length > 0 ? env.CMC_MCP_API_KEY : readOptionalSecretFile(cmcMcpApiKeyFile, "CMC MCP API key");
   const predictFunPrivyKeyFile = resolveSecretFilePath(env.PREDICT_FUN_PRIVY_KEY_FILE) ?? resolve(homedir(), ".predict_privy_key");
   const predictFunJwtCacheFile = resolveSecretFilePath(env.PREDICT_FUN_JWT_CACHE_FILE) ?? resolve(homedir(), ".predict_fun_jwt");
 
   return configSchema.parse({
     runMode: env.RUN_MODE,
     cmcApiKey: env.CMC_API_KEY,
+    cmcMcpUrl: env.CMC_MCP_URL,
+    cmcMcpApiKey,
+    cmcMcpApiKeyFile,
+    cmcAgentHubEnabled: env.CMC_AGENT_HUB_ENABLED,
     pythProApiKey: env.PYTH_PRO_API_KEY,
     pythHistoryBaseUrl: env.PYTH_HISTORY_BASE_URL,
     pythHistoryChannel: env.PYTH_HISTORY_CHANNEL,
@@ -130,12 +141,12 @@ export function resolveSecretFilePath(value: string | undefined): string | undef
   return resolve(trimmed);
 }
 
-function readOptionalSecretFile(path: string | undefined): string | undefined {
+function readOptionalSecretFile(path: string | undefined, label: string): string | undefined {
   if (!path) {
     return undefined;
   }
   if (!existsSync(path)) {
-    throw new Error("Configured predict.fun API key file does not exist");
+    throw new Error(`Configured ${label} file does not exist`);
   }
   const value = readFileSync(path, "utf8").trim();
   return value.length > 0 ? value : undefined;

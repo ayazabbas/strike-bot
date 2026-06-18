@@ -1,0 +1,26 @@
+{
+  "name": "Strike Predict.fun BTC 5m Agent",
+  "description": "CMC-aware autonomous prediction-market trading agent for BNB Chain BTC 5-minute markets. Uses CMC Agent Hub for macro/regime tuning, Trust Wallet Agent Kit for self-custodial funding readiness, and predict.fun for execution under strict risk gates.",
+  "endpoints": [
+    {
+      "name": "status",
+      "endpoint": "https://example.invalid/agent/status",
+      "version": "0.1.0"
+    },
+    {
+      "name": "strategy-skill",
+      "endpoint": "https://example.invalid/agent/strategy-skill",
+      "version": "0.1.0"
+    }
+  ],
+  "metadata": {
+    "track": "BNB Hack Track 1 Autonomous Trading Agents",
+    "track2Skill": "cmc-btc5-prediction-market-tuner",
+    "venue": "predict.fun BTC 5m UP/DOWN",
+    "chainId": 56,
+    "agentWallet": "set-via-BNB_AGENT_PUBLIC_WALLET",
+    "executionWallet": "set-via-profile-update-before-registration",
+    "uses": ["CMC Agent Hub", "Trust Wallet Agent Kit", "BNB Agent SDK", "Pyth Lazer", "predict.fun"],
+    "safety": ["max drawdown cap", "max trade size", "no live mode without approval", "audit journal", "dry-run registration by default"]
+  }
+}

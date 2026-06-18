@@ -12,6 +12,9 @@ describe("config", () => {
     expect(config.maxPositionUsd).toBe(5);
     expect(config.liveTradingApproved).toBe(false);
     expect(config.predictFunRedemptionApproved).toBe(false);
+    expect(config.cmcMcpUrl).toBe("https://mcp.coinmarketcap.com/mcp");
+    expect(config.cmcMcpApiKey).toBeUndefined();
+    expect(config.cmcAgentHubEnabled).toBe(false);
     expect(config.trustWalletAgentKitEnabled).toBe(true);
     expect(config.pythHistoryBaseUrl).toBe("https://pyth.dourolabs.app/v1");
     expect(config.pythHistoryChannel).toBe("real_time");
@@ -55,10 +58,16 @@ describe("config", () => {
       MODEL_INFERENCE_TIMEOUT_MS: "250",
       PAPER_JOURNAL_PATH: "tmp/paper.jsonl",
       MAX_TEST_TRADE_USD: "0.05",
-      PREDICT_FUN_REDEMPTION_APPROVED: "true"
+      PREDICT_FUN_REDEMPTION_APPROVED: "true",
+      CMC_MCP_URL: "https://mcp.coinmarketcap.com/mcp",
+      CMC_MCP_API_KEY: "cmc-mcp-key",
+      CMC_AGENT_HUB_ENABLED: "true"
     });
 
     expect(config.predictFunApiKey).toBe("predict-test-key");
+    expect(config.cmcMcpUrl).toBe("https://mcp.coinmarketcap.com/mcp");
+    expect(config.cmcMcpApiKey).toBe("cmc-mcp-key");
+    expect(config.cmcAgentHubEnabled).toBe(true);
     expect(config.pythHistoryLookbackMinutes).toBe(30);
     expect(config.predictFunMinSecondsBeforeClose).toBe(90);
     expect(config.predictFunAccountAddress).toBe("0x0000000000000000000000000000000000000001");
@@ -107,6 +116,23 @@ describe("config", () => {
       });
 
       expect(config.predictFunApiKey).toBe("predict-env-key");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("loads CMC MCP API key from an external file path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-config-"));
+    const keyPath = join(dir, "cmc-mcp-key");
+
+    try {
+      writeFileSync(keyPath, "cmc-file-key\n", { mode: 0o600 });
+      const config = loadConfig({
+        CMC_MCP_API_KEY_FILE: keyPath
+      });
+
+      expect(config.cmcMcpApiKey).toBe("cmc-file-key");
+      expect(config.cmcMcpApiKeyFile).toBe(keyPath);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

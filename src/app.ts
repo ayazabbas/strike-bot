@@ -1,6 +1,7 @@
 import type { AppConfig, RunMode } from "./config.js";
 import { existsSync } from "node:fs";
 import type { CmcAdapter } from "./adapters/CmcAdapter.js";
+import type { CmcAgentHubAdapter } from "./adapters/CmcAgentHubAdapter.js";
 import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import type { PredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
 import { RestPredictFunPositionsAdapter, type PredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
@@ -19,9 +20,12 @@ import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js"
 import { PredictFunRedemptionExecutor } from "./execution/PredictFunRedemptionExecutor.js";
 import { PredictFunRedemptionPlanner } from "./execution/PredictFunRedemptionPlanner.js";
 import { PREDICT_FUN_MIN_ORDER_NOTIONAL_USD } from "./domain/predictFunLimits.js";
+import { CmcStrategyTuner } from "./strategy/CmcStrategyTuner.js";
+import { buildAgentDecisionSummary } from "./agent/AgentLoop.js";
 
 export interface AppDependencies {
   readonly cmc: CmcAdapter;
+  readonly cmcAgentHub?: CmcAgentHubAdapter;
   readonly pyth: PythAdapter;
   readonly predictFun: PredictFunAdapter;
   readonly predictFunAuth: PredictFunAuthAdapter;
@@ -36,8 +40,9 @@ export interface AppDependencies {
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
-  const [macro, candle, marketSnapshot, predictFunAuth, predictFunExecutionWallet, twak] = await Promise.all([
+  const [macro, cmcAgentHub, candle, marketSnapshot, predictFunAuth, predictFunExecutionWallet, twak] = await Promise.all([
     dependencies.cmc.getMacroSnapshot(),
+    dependencies.cmcAgentHub?.getSnapshot(),
     dependencies.pyth.getBtcFiveMinuteCandleMetadata(),
     dependencies.predictFun.listMarkets(),
     dependencies.predictFunAuth.checkReadiness({ acquireJwt: true }),
@@ -53,6 +58,7 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
   return {
     mode: config.runMode,
     macro,
+    cmcAgentHub: formatCmcAgentHub(cmcAgentHub),
     candle,
     markets: {
       total: marketSnapshot.markets.length,
@@ -77,7 +83,7 @@ export async function inspect(config: AppConfig, dependencies: AppDependencies) 
 export async function tick(config: AppConfig, dependencies: AppDependencies, mode: RunMode) {
   await dependencies.repository.init();
   const run = await dependencies.repository.createRun(mode);
-  const macro = await dependencies.cmc.getMacroSnapshot();
+  const [macro, cmcAgentHub] = await Promise.all([dependencies.cmc.getMacroSnapshot(), dependencies.cmcAgentHub?.getSnapshot()]);
   const candle = await dependencies.pyth.getBtcFiveMinuteCandleMetadata();
   const marketSnapshot = await dependencies.predictFun.listMarkets();
   await dependencies.repository.recordMarketSnapshot(run.id, marketSnapshot);
@@ -105,6 +111,29 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
         });
 
   const risk = new RiskManager(config).evaluate(decision);
+  const tuning = new CmcStrategyTuner().tune({
+    cmc: cmcAgentHub ?? {
+      capturedAt: macro.capturedAt.toISOString(),
+      btc: { id: 1, priceUsd: macro.btcUsd, percentChange24h: macro.btc24hChangePct, percentChange7d: macro.btc7dChangePct },
+      global: {},
+      derivatives: {},
+      narratives: [],
+      macroEvents: [],
+      source: "cmc-agent-hub",
+      status: "unavailable",
+      reasons: ["cmc_agent_hub_not_configured"],
+      fallbackMacro: macro
+    },
+    risk: {
+      maxDailyLossUsd: config.maxDailyLossUsd,
+      maxPositionUsd: config.maxPositionUsd
+    },
+    guard: risk,
+    pricing: {
+      spread: pricing?.spread,
+      stale: pricing?.status !== "available"
+    }
+  });
   await dependencies.repository.recordDecision(run.id, decision);
 
   const [predictFunAuth, predictFunExecutionWallet, twak] = await Promise.all([
@@ -113,7 +142,20 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
     dependencies.twak.checkReadiness()
   ]);
   const blockedDecision =
-    !risk.approved && decision.action === "enter"
+    tuning.riskLimits.forceNoTrade && decision.action === "enter"
+      ? {
+          action: "no_trade" as const,
+          reason: "tuner_rejected" as const,
+          marketId: decision.marketId,
+          runMode: mode,
+          createdAt: new Date(),
+          metadata: {
+            ...(decision.metadata ?? {}),
+            tuningHash: new CmcStrategyTuner().hash(tuning),
+            tuningReasons: tuning.reasoning
+          }
+        }
+      : !risk.approved && decision.action === "enter"
       ? {
           action: "no_trade" as const,
           reason: "risk_rejected" as const,
@@ -153,9 +195,23 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
       safety
     });
   }
+  const agentDecision = buildAgentDecisionSummary({
+    cmcAgentHub,
+    tuning,
+    selectedMarket: selectedMarket ?? undefined,
+    pricing,
+    decision: blockedDecision,
+    risk,
+    execution,
+    safety,
+    journaled: mode === "paper"
+  });
 
   return {
     run,
+    cmcAgentHub: formatCmcAgentHub(cmcAgentHub),
+    tuning,
+    agentDecision,
     decision,
     risk,
     execution,
@@ -264,6 +320,34 @@ function formatTwakFundingWallet(twak: Awaited<ReturnType<TrustWalletAgentKitAda
     agentWalletPasswordAvailable: twak.agentWalletPasswordAvailable,
     address: twak.address,
     reasons: twak.reasons
+  };
+}
+
+function formatCmcAgentHub(snapshot: Awaited<ReturnType<CmcAgentHubAdapter["getSnapshot"]>> | undefined) {
+  if (!snapshot) {
+    return {
+      status: "unavailable" as const,
+      reasons: ["cmc_agent_hub_not_configured"]
+    };
+  }
+  return {
+    capturedAt: snapshot.capturedAt,
+    source: snapshot.source,
+    status: snapshot.status,
+    reasons: snapshot.reasons,
+    btc: snapshot.btc,
+    global: snapshot.global,
+    derivatives: snapshot.derivatives,
+    narrativesCount: snapshot.narratives.length,
+    macroEventsCount: snapshot.macroEvents.length,
+    fallbackMacro: snapshot.fallbackMacro
+      ? {
+          capturedAt: snapshot.fallbackMacro.capturedAt,
+          source: snapshot.fallbackMacro.source,
+          stubbed: snapshot.fallbackMacro.stubbed,
+          error: snapshot.fallbackMacro.error
+        }
+      : undefined
   };
 }
 

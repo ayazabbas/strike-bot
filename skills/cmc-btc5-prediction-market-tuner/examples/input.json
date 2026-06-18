@@ -1,0 +1,44 @@
+{
+  "cmc": {
+    "capturedAt": "2026-06-18T12:00:00.000Z",
+    "source": "cmc-agent-hub",
+    "status": "available",
+    "reasons": [],
+    "btc": {
+      "id": 1,
+      "priceUsd": 70000,
+      "percentChange1h": 0.3,
+      "percentChange24h": 2.1,
+      "percentChange7d": 4.8,
+      "dominance": 58.2,
+      "rsi": 61,
+      "macdSignal": "bullish",
+      "emaTrend": "up"
+    },
+    "global": {
+      "totalMarketCapChange24h": 1.1,
+      "fearGreed": 64,
+      "altcoinSeason": 35,
+      "btcDominance": 58.2,
+      "ethDominance": 12.7
+    },
+    "derivatives": {
+      "fundingBias": "positive",
+      "openInterestTrend": "rising",
+      "liquidationSkew": "balanced"
+    },
+    "narratives": [{ "name": "Bitcoin", "performance24h": 1.4, "volumeChange24h": 6.2 }],
+    "macroEvents": [{ "title": "FOMC speaker", "date": "2026-06-20", "expectedImpact": "medium" }]
+  },
+  "risk": {
+    "maxDailyLossUsd": 10,
+    "maxOpenExposureUsd": 5,
+    "drawdownUsd": 0,
+    "openExposureUsd": 0
+  },
+  "market": {
+    "pricingStatus": "available",
+    "spread": 0.04,
+    "stale": false
+  }
+}

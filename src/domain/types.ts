@@ -17,6 +17,7 @@ export type DecisionReason =
   | "model_not_configured"
   | "pricing_unavailable"
   | "price_above_threshold"
+  | "tuner_rejected"
   | "duplicate_market_attempt"
   | "risk_rejected"
   | "live_not_approved"
@@ -213,6 +214,117 @@ export interface MacroSnapshot {
   readonly error?: string;
 }
 
+export interface CmcAgentHubSnapshot {
+  readonly capturedAt: string;
+  readonly btc: {
+    readonly id: number;
+    readonly priceUsd?: number;
+    readonly percentChange1h?: number;
+    readonly percentChange24h?: number;
+    readonly percentChange7d?: number;
+    readonly dominance?: number;
+    readonly rsi?: number;
+    readonly macdSignal?: string;
+    readonly emaTrend?: string;
+  };
+  readonly global: {
+    readonly totalMarketCapChange24h?: number;
+    readonly fearGreed?: number;
+    readonly altcoinSeason?: number;
+    readonly btcDominance?: number;
+    readonly ethDominance?: number;
+  };
+  readonly derivatives: {
+    readonly fundingBias?: string;
+    readonly openInterestTrend?: string;
+    readonly liquidationSkew?: string;
+  };
+  readonly narratives: readonly {
+    readonly name: string;
+    readonly performance24h?: number;
+    readonly volumeChange24h?: number;
+  }[];
+  readonly macroEvents: readonly {
+    readonly title: string;
+    readonly date: string;
+    readonly expectedImpact?: string;
+  }[];
+  readonly source: "cmc-agent-hub";
+  readonly status: "available" | "partial" | "unavailable";
+  readonly reasons: readonly string[];
+  readonly fallbackMacro?: MacroSnapshot;
+}
+
+export interface StrategyTuningSpec {
+  readonly schemaVersion: 1;
+  readonly strategyFamily: "prediction_market_ev_hgb";
+  readonly market: "BTC_5M_UP_DOWN";
+  readonly regime: {
+    readonly macroBias: "bullish" | "bearish" | "neutral" | "risk_off";
+    readonly volatilityRegime: "low" | "normal" | "high" | "extreme";
+    readonly confidence: number;
+    readonly validForMinutes: number;
+  };
+  readonly parameterDeltas: {
+    readonly probabilityThresholdDelta: number;
+    readonly maxEntryPriceDelta: number;
+    readonly minEvEdgeDelta: number;
+    readonly maxNotionalMultiplier: number;
+  };
+  readonly riskLimits: {
+    readonly maxTradesPerHour: number;
+    readonly maxDailyDrawdownUsd: number;
+    readonly maxOpenExposureUsd: number;
+    readonly forceNoTrade: boolean;
+  };
+  readonly reasoning: readonly string[];
+  readonly backtestSpec: {
+    readonly features: readonly string[];
+    readonly labels: "predict_fun_btc_5m_settlement_direction";
+    readonly executionAssumptions: {
+      readonly fillPenalty: number;
+      readonly fees: number;
+      readonly slippage: number;
+    };
+  };
+}
+
+export interface AgentDecisionSummary {
+  readonly stages: readonly {
+    readonly name: "observe" | "tune" | "plan" | "guard" | "act" | "journal";
+    readonly status: "ok" | "blocked" | "skipped";
+    readonly summary: string;
+  }[];
+  readonly observations: {
+    readonly cmcAgentHubStatus?: CmcAgentHubSnapshot["status"];
+    readonly selectedMarketId?: string;
+    readonly pricingStatus?: MarketPricing["status"] | "not_requested";
+  };
+  readonly tuner: {
+    readonly hash: string;
+    readonly forceNoTrade: boolean;
+    readonly macroBias: StrategyTuningSpec["regime"]["macroBias"];
+    readonly volatilityRegime: StrategyTuningSpec["regime"]["volatilityRegime"];
+  };
+  readonly plan: {
+    readonly action: StrategyDecision["action"];
+    readonly reason?: DecisionReason;
+    readonly marketId?: string;
+  };
+  readonly guard: {
+    readonly approved: boolean;
+    readonly reasons: readonly string[];
+  };
+  readonly action: {
+    readonly status: ExecutionResult["status"];
+    readonly broadcast: boolean;
+  };
+  readonly safety: {
+    readonly signing: boolean;
+    readonly broadcasting: boolean;
+  };
+}
+
 export interface BtcCandleMetadata {
   readonly capturedAt: Date;
   readonly source: "pyth-pro";
@@ -270,6 +382,8 @@ export interface StrategyDecisionMetadata {
   readonly candleStartToleranceSeconds?: number;
   readonly marketStartDeltaSeconds?: number;
   readonly secondsSinceMarketStart?: number;
+  readonly tuningHash?: string;
+  readonly tuningReasons?: readonly string[];
 }
 
 export interface NoTradeDecision {
