@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
@@ -67,6 +69,114 @@ function safeJson(value: unknown): string {
   );
 }
 
+interface LiveRunnerState {
+  readonly attemptedMarketIds?: readonly string[];
+}
+
+function emitJsonLine(value: unknown): void {
+  console.log(JSON.stringify(value, (_key, nestedValue) => (nestedValue instanceof Date ? nestedValue.toISOString() : nestedValue)));
+}
+
+function readLatestSignalCandidate(journalPath: string, maxAgeSeconds: number): { marketId: string; ageSeconds: number; capturedAt: string } | undefined {
+  let contents: string;
+  try {
+    contents = readFileSync(journalPath, "utf8");
+  } catch {
+    return undefined;
+  }
+  const now = Date.now();
+  const lines = contents.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim();
+    if (!line) {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line) as unknown;
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      continue;
+    }
+    const row = parsed as Record<string, unknown>;
+    const capturedAt = typeof row.captured_at === "string" ? row.captured_at : undefined;
+    if (!capturedAt) {
+      continue;
+    }
+    const ageSeconds = (now - new Date(capturedAt).getTime()) / 1000;
+    if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > maxAgeSeconds) {
+      continue;
+    }
+    if (row.status !== "signals") {
+      continue;
+    }
+    const signals = Array.isArray(row.signals) ? row.signals : [];
+    const first = signals[0];
+    if (!first || typeof first !== "object" || Array.isArray(first)) {
+      continue;
+    }
+    const signal = first as Record<string, unknown>;
+    if (signal.action !== "enter" || typeof signal.marketId !== "string") {
+      continue;
+    }
+    return { marketId: signal.marketId, ageSeconds: Math.round(ageSeconds * 1000) / 1000, capturedAt };
+  }
+  return undefined;
+}
+
+function loadAttempted(path: string): Set<string> {
+  if (!existsSync(path)) {
+    return new Set();
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as LiveRunnerState;
+    return new Set((parsed.attemptedMarketIds ?? []).map(String));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveAttempted(path: string, attempted: Set<string>): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify({ attemptedMarketIds: Array.from(attempted).sort() }, null, 2));
+}
+
+async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>): Promise<void> {
+  const pollMs = Number(process.env.STRIKE_BOT_LIVE_RUNNER_POLL_MS ?? "250");
+  const statePath = process.env.STRIKE_BOT_LIVE_RUNNER_STATE ?? "data/live-runner/attempted-markets.json";
+  const attempted = loadAttempted(statePath);
+  emitJsonLine({ event: "runner_start", mode: "node_live_runner", pollMs, journal: config.strategySignalJournalPath, state: statePath, ts: new Date() });
+  const readiness = await liveReadiness(config, dependencies);
+  emitJsonLine({ event: "preflight", ready: readiness.summary.ready, blockers: readiness.summary.blockers, warnings: readiness.summary.warnings, ts: new Date() });
+  if (!readiness.summary.ready) {
+    throw new Error("live_runner_preflight_failed");
+  }
+  for (;;) {
+    const candidate = readLatestSignalCandidate(config.strategySignalJournalPath, config.strategySignalMaxAgeSeconds);
+    if (candidate && !attempted.has(candidate.marketId)) {
+      attempted.add(candidate.marketId);
+      saveAttempted(statePath, attempted);
+      emitJsonLine({ event: "live_tick_attempt", ...candidate, ts: new Date() });
+      const result = await tick(config, dependencies, "live");
+      emitJsonLine({
+        event: "live_tick_result",
+        marketId: candidate.marketId,
+        decisionAction: result.decision.action,
+        decisionReason: "reason" in result.decision ? result.decision.reason : undefined,
+        executionStatus: result.execution.status,
+        executionReason: "reason" in result.execution ? result.execution.reason : undefined,
+        broadcast: result.execution.broadcast,
+        safety: result.safety,
+        details: "details" in result.execution ? result.execution.details : undefined,
+        ts: new Date()
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 250));
+  }
+}
+
 async function main() {
   const command = process.argv[2] ?? "inspect";
   const config = loadConfig();
@@ -85,6 +195,11 @@ async function main() {
   if (command === "tick") {
     const mode = runModeSchema.parse(config.runMode);
     console.log(safeJson(await tick(config, dependencies, mode)));
+    return;
+  }
+
+  if (command === "live-runner") {
+    await runLiveRunner(config, dependencies);
     return;
   }
 
