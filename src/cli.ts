@@ -14,6 +14,9 @@ import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js"
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
 import { SignalJournalStrategySkill } from "./strategy/SignalJournalStrategySkill.js";
+import { selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
+import { RiskManager } from "./risk/RiskManager.js";
+import type { MarketPricing, SelectedBtcFiveMinuteMarket } from "./domain/types.js";
 import {
   inspect,
   inspectPositions,
@@ -143,35 +146,120 @@ function saveAttempted(path: string, attempted: Set<string>): void {
   writeFileSync(path, JSON.stringify({ attemptedMarketIds: Array.from(attempted).sort() }, null, 2));
 }
 
+interface HotMarketState {
+  selected?: SelectedBtcFiveMinuteMarket;
+  pricing?: MarketPricing;
+  updatedAt?: Date;
+  refreshInFlight?: Promise<void>;
+}
+
+async function refreshHotMarketState(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>, state: HotMarketState): Promise<void> {
+  const marketSnapshot = await dependencies.predictFun.listMarkets();
+  const selected = selectNearestTradableBtcFiveMinuteMarket(marketSnapshot.markets, {
+    minSecondsBeforeClose: config.predictFunMinSecondsBeforeClose
+  });
+  state.selected = selected;
+  state.pricing = selected ? await dependencies.predictFun.getOrderbookPricing(selected.id) : undefined;
+  state.updatedAt = new Date();
+}
+
+function maybeRefreshHotMarketState(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>, state: HotMarketState): void {
+  const maxAgeMs = Number(process.env.STRIKE_BOT_HOT_STATE_MAX_AGE_MS ?? "750");
+  const ageMs = state.updatedAt ? Date.now() - state.updatedAt.getTime() : Number.POSITIVE_INFINITY;
+  if (state.refreshInFlight || ageMs < maxAgeMs) {
+    return;
+  }
+  state.refreshInFlight = refreshHotMarketState(config, dependencies, state)
+    .catch((error: unknown) => {
+      emitJsonLine({ event: "hot_state_refresh_failed", error: error instanceof Error ? error.message : String(error), ts: new Date() });
+    })
+    .finally(() => {
+      state.refreshInFlight = undefined;
+    });
+}
+
+async function executeHotSignal(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>, hotState: HotMarketState) {
+  if (hotState.refreshInFlight) {
+    await hotState.refreshInFlight;
+  }
+  if (!hotState.selected || !hotState.pricing) {
+    throw new Error("hot_state_unavailable");
+  }
+  const now = new Date();
+  const decision = await dependencies.strategy.decide({
+    runMode: "live",
+    macro: { capturedAt: now, source: "coinmarketcap", stubbed: true },
+    candle: { capturedAt: now, source: "pyth-pro", symbol: "BTC", intervalMinutes: 5, stubbed: true },
+    markets: [hotState.selected.market],
+    selectedMarket: hotState.selected,
+    pricing: hotState.pricing
+  });
+  const risk = new RiskManager(config).evaluate(decision);
+  const blockedDecision =
+    !risk.approved && decision.action === "enter"
+      ? {
+          action: "no_trade" as const,
+          reason: "risk_rejected" as const,
+          marketId: decision.marketId,
+          runMode: "live" as const,
+          createdAt: new Date()
+        }
+      : decision;
+  const execution = await dependencies.predictFunOrderExecutor.execute(blockedDecision, "live", {
+    selectedMarket: hotState.selected.market,
+    pricing: hotState.pricing,
+    risk
+  });
+  return {
+    decision,
+    risk,
+    execution,
+    market: { id: hotState.selected.id, categorySlug: hotState.selected.categorySlug, stateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined },
+    safety: {
+      signing: blockedDecision.action === "enter" && (execution.status === "prepared_not_broadcast" || execution.status === "broadcast"),
+      broadcasting: execution.broadcast
+    }
+  };
+}
+
 async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>): Promise<void> {
   const pollMs = Number(process.env.STRIKE_BOT_LIVE_RUNNER_POLL_MS ?? "250");
   const statePath = process.env.STRIKE_BOT_LIVE_RUNNER_STATE ?? "data/live-runner/attempted-markets.json";
   const attempted = loadAttempted(statePath);
-  emitJsonLine({ event: "runner_start", mode: "node_live_runner", pollMs, journal: config.strategySignalJournalPath, state: statePath, ts: new Date() });
+  const hotState: HotMarketState = {};
+  emitJsonLine({ event: "runner_start", mode: "node_hot_live_runner", pollMs, journal: config.strategySignalJournalPath, state: statePath, ts: new Date() });
   const readiness = await liveReadiness(config, dependencies);
   emitJsonLine({ event: "preflight", ready: readiness.summary.ready, blockers: readiness.summary.blockers, warnings: readiness.summary.warnings, ts: new Date() });
   if (!readiness.summary.ready) {
     throw new Error("live_runner_preflight_failed");
   }
+  await refreshHotMarketState(config, dependencies, hotState);
+  emitJsonLine({ event: "hot_state_ready", marketId: hotState.selected?.id, pricingStatus: hotState.pricing?.status, ts: new Date() });
   for (;;) {
+    maybeRefreshHotMarketState(config, dependencies, hotState);
     const candidate = readLatestSignalCandidate(config.strategySignalJournalPath, config.strategySignalMaxAgeSeconds);
     if (candidate && !attempted.has(candidate.marketId)) {
       attempted.add(candidate.marketId);
       saveAttempted(statePath, attempted);
-      emitJsonLine({ event: "live_tick_attempt", ...candidate, ts: new Date() });
-      const result = await tick(config, dependencies, "live");
-      emitJsonLine({
-        event: "live_tick_result",
-        marketId: candidate.marketId,
-        decisionAction: result.decision.action,
-        decisionReason: "reason" in result.decision ? result.decision.reason : undefined,
-        executionStatus: result.execution.status,
-        executionReason: "reason" in result.execution ? result.execution.reason : undefined,
-        broadcast: result.execution.broadcast,
-        safety: result.safety,
-        details: "details" in result.execution ? result.execution.details : undefined,
-        ts: new Date()
-      });
+      emitJsonLine({ event: "live_tick_attempt", ...candidate, hotMarketId: hotState.selected?.id, hotStateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined, ts: new Date() });
+      try {
+        const result = await executeHotSignal(config, dependencies, hotState);
+        emitJsonLine({
+          event: "live_tick_result",
+          marketId: candidate.marketId,
+          hotMarket: result.market,
+          decisionAction: result.decision.action,
+          decisionReason: "reason" in result.decision ? result.decision.reason : undefined,
+          executionStatus: result.execution.status,
+          executionReason: "reason" in result.execution ? result.execution.reason : undefined,
+          broadcast: result.execution.broadcast,
+          safety: result.safety,
+          details: "details" in result.execution ? result.execution.details : undefined,
+          ts: new Date()
+        });
+      } catch (error) {
+        emitJsonLine({ event: "live_tick_failed", marketId: candidate.marketId, error: error instanceof Error ? error.message : String(error), ts: new Date() });
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 250));
   }
