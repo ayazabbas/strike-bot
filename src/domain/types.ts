@@ -169,11 +169,10 @@ export interface RedactedPredictFunOrderDetails {
   readonly takerAmount: string;
   readonly feeRateBps: number;
   readonly strategy: "LIMIT";
-  readonly isFillOrKill: true;
   readonly isPostOnly: false;
-  readonly reservedBalancePolicy: "REJECT_MARKET_ORDER";
   readonly selfTradePrevention: "CANCEL_MAKER";
   readonly apiStatus?: number;
+  readonly apiError?: string;
 }
 
 export interface ExecutionResult {

@@ -180,9 +180,7 @@ describe("PredictFunOrderExecutor", () => {
           },
           pricePerShare: "500000000000000000",
           strategy: "LIMIT",
-          isFillOrKill: true,
           isPostOnly: false,
-          reservedBalancePolicy: "REJECT_MARKET_ORDER",
           selfTradePrevention: "CANCEL_MAKER"
         }
       });

@@ -114,13 +114,14 @@ export class PredictFunOrderExecutor {
       });
 
       if (!response.ok) {
+        const apiError = await safeResponseText(response);
         return {
           mode,
           broadcast: false,
           status: "skipped",
           reason: `predict_fun_order_post_failed_${response.status}`,
           decision,
-          details: { ...prepared.details, apiStatus: response.status }
+          details: { ...prepared.details, apiStatus: response.status, apiError }
         };
       }
 
@@ -272,9 +273,7 @@ export class PredictFunOrderExecutor {
         order: orderWithHash,
         pricePerShare,
         strategy: "LIMIT",
-        isFillOrKill: true,
         isPostOnly: false,
-        reservedBalancePolicy: "REJECT_MARKET_ORDER",
         selfTradePrevention: "CANCEL_MAKER"
       }
     });
@@ -292,9 +291,7 @@ export class PredictFunOrderExecutor {
         takerAmount: stringifyBigNumberish(amounts.takerAmount),
         feeRateBps: market.feeRateBps,
         strategy: "LIMIT",
-        isFillOrKill: true,
         isPostOnly: false,
-        reservedBalancePolicy: "REJECT_MARKET_ORDER",
         selfTradePrevention: "CANCEL_MAKER"
       }
     };
@@ -423,4 +420,3 @@ function isRecord(value: unknown): value is UnknownRecord {
 function asRecord(value: unknown): UnknownRecord {
   return isRecord(value) ? value : {};
 }
-
