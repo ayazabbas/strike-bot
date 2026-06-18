@@ -199,6 +199,8 @@ export async function liveReadiness(config: AppConfig, dependencies: AppDependen
   const strategy = {
     configuredSkillName: dependencies.strategy.name,
     noop: dependencies.strategy.name.toLowerCase().includes("noop"),
+    modelEndpointRequired: dependencies.strategy.name === "ModelStrategySkill",
+    modelEndpointConfigured: Boolean(config.modelInferenceEndpointUrl),
     notionalUsd: config.strategyNotionalUsd,
     predictFunMinOrderNotionalUsd: PREDICT_FUN_MIN_ORDER_NOTIONAL_USD
   };
@@ -310,6 +312,8 @@ function liveReadinessBlockers(input: {
   };
   readonly strategy: {
     readonly noop: boolean;
+    readonly modelEndpointRequired: boolean;
+    readonly modelEndpointConfigured: boolean;
     readonly notionalUsd: number;
   };
   readonly selectedMarket: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>;
@@ -341,6 +345,9 @@ function liveReadinessBlockers(input: {
   }
   if (input.strategy.noop) {
     blockers.push("live_strategy_is_noop");
+  }
+  if (input.strategy.modelEndpointRequired && !input.strategy.modelEndpointConfigured) {
+    blockers.push("model_inference_endpoint_missing");
   }
   if (input.strategy.notionalUsd < PREDICT_FUN_MIN_ORDER_NOTIONAL_USD) {
     blockers.push("strategy_notional_below_predict_fun_minimum");

@@ -82,6 +82,17 @@ describe("buildModelInferenceRequest", () => {
         btcUsd: 104000,
         btc24hChangePct: 1.2,
         elapsedSeconds: 5,
+        featureState: {
+          evaluation_time: "2026-06-18T12:00:05.000Z",
+          window_start: "2026-06-18T12:00:00.000Z",
+          window_end: "2026-06-18T12:05:00.000Z",
+          elapsed_seconds: 5,
+          seconds_to_close: 295,
+          up_ask: 0.47,
+          down_ask: 0.52,
+          partial_return_bps: 9.6246,
+          close_location: 0.6
+        },
         latestCandle: {
           openTime: "2026-06-18T12:00:00.000Z",
           open: 103900,

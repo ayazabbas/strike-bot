@@ -35,6 +35,7 @@ export interface ModelInferenceRequest {
   };
   readonly features: {
     readonly elapsedSeconds: number;
+    readonly featureState?: Readonly<Record<string, string | number | boolean | null>>;
     readonly btcUsd?: number;
     readonly btc24hChangePct?: number;
     readonly btc7dChangePct?: number;
@@ -53,6 +54,8 @@ export interface ModelInferenceRequest {
 
 export interface ModelInferenceCandidateOutput {
   readonly direction: MarketDirection;
+  readonly entryAsk?: number;
+  readonly entryBid?: number;
   readonly profitabilityProbability?: number;
   readonly directionProbability?: number;
   readonly predictedEv?: number;

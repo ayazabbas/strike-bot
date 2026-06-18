@@ -37,7 +37,7 @@ export const configSchema = z.object({
   predictFunPrivyKeyFile: z.string().min(1).default(resolve(homedir(), ".predict_privy_key")),
   predictFunJwtCacheFile: z.string().min(1).default(resolve(homedir(), ".predict_fun_jwt")),
   predictFunMinSecondsBeforeClose: z.coerce.number().int().nonnegative().default(60),
-  strategySkill: z.enum(["noop", "momentum", "signal"]).default("noop"),
+  strategySkill: z.enum(["noop", "momentum", "signal", "model"]).default("noop"),
   strategySignalJournalPath: z
     .string()
     .min(1)

@@ -27,7 +27,7 @@ export class HistoryPythAdapter implements PythAdapter {
       url.searchParams.set("symbol", this.config.pythHistorySymbol);
       url.searchParams.set("from", String(from));
       url.searchParams.set("to", String(to));
-      url.searchParams.set("resolution", "5");
+      url.searchParams.set("resolution", "1");
 
       const headers: Record<string, string> = { accept: "application/json" };
       if (this.config.pythProApiKey) {
@@ -40,7 +40,8 @@ export class HistoryPythAdapter implements PythAdapter {
       }
 
       const payload = (await response.json()) as unknown;
-      const latestCandle = normalizeLatestCandle(payload);
+      const recentCandles = normalizeCandles(payload);
+      const latestCandle = recentCandles.at(-1);
       if (!latestCandle) {
         return stubbedMetadata(capturedAt);
       }
@@ -49,9 +50,10 @@ export class HistoryPythAdapter implements PythAdapter {
         capturedAt,
         source: "pyth-pro",
         symbol: "BTC",
-        intervalMinutes: 5,
+        intervalMinutes: 1,
         latestCandleOpenTime: latestCandle.openTime,
         latestCandle,
+        recentCandles,
         stubbed: false
       };
     } catch {
@@ -76,9 +78,9 @@ function stubbedMetadata(capturedAt: Date): BtcCandleMetadata {
   };
 }
 
-function normalizeLatestCandle(payload: unknown): BtcCandleMetadata["latestCandle"] | undefined {
+function normalizeCandles(payload: unknown): NonNullable<BtcCandleMetadata["recentCandles"]> {
   if (!isRecord(payload)) {
-    return undefined;
+    return [];
   }
 
   const times = numberArray(payload.t);
@@ -89,25 +91,26 @@ function normalizeLatestCandle(payload: unknown): BtcCandleMetadata["latestCandl
   const volumes = numberArray(payload.v);
   const length = Math.min(times.length, opens.length, highs.length, lows.length, closes.length);
 
-  for (let index = length - 1; index >= 0; index -= 1) {
+  const candles: Array<NonNullable<BtcCandleMetadata["recentCandles"]>[number]> = [];
+  for (let index = 0; index < length; index += 1) {
     const openTime = epochToDate(times[index]);
     const open = opens[index];
     const high = highs[index];
     const low = lows[index];
     const close = closes[index];
     if (openTime && [open, high, low, close].every((value) => Number.isFinite(value))) {
-      return {
+      candles.push({
         openTime,
         open,
         high,
         low,
         close,
         volume: volumes[index]
-      };
+      });
     }
   }
 
-  return undefined;
+  return candles;
 }
 
 function numberArray(value: unknown): number[] {

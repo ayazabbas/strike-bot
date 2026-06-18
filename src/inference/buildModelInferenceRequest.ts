@@ -1,5 +1,6 @@
 import type { RunMode } from "../config.js";
 import type { BtcCandleMetadata, MacroSnapshot, MarketPricing, SelectedBtcFiveMinuteMarket } from "../domain/types.js";
+import { buildRollingFeatureState } from "./buildRollingFeatureState.js";
 import type { ModelInferenceRequest } from "./types.js";
 
 export interface BuildModelInferenceRequestInput {
@@ -54,6 +55,13 @@ export function buildModelInferenceRequest(input: BuildModelInferenceRequestInpu
     },
     features: {
       elapsedSeconds,
+      featureState: buildRollingFeatureState({
+        capturedAt: input.capturedAt,
+        selectedMarket,
+        pricing,
+        macro: input.macro,
+        candle: input.candle
+      }),
       btcUsd: finite(input.macro.btcUsd) ? input.macro.btcUsd : undefined,
       btc24hChangePct: finite(input.macro.btc24hChangePct) ? input.macro.btc24hChangePct : undefined,
       btc7dChangePct: finite(input.macro.btc7dChangePct) ? input.macro.btc7dChangePct : undefined,

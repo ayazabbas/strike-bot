@@ -15,9 +15,11 @@ const responseSchema = z.object({
   modelVersion: z.string().min(1).optional(),
   candidates: z
     .array(
-      z.object({
-        direction: z.enum(["UP", "DOWN"]),
-        profitabilityProbability: finiteProbability,
+        z.object({
+          direction: z.enum(["UP", "DOWN"]),
+          entryAsk: finiteNumber,
+          entryBid: finiteNumber,
+          profitabilityProbability: finiteProbability,
         directionProbability: finiteProbability,
         predictedEv: finiteNumber,
         directionEdge: finiteNumber,

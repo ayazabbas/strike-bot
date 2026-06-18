@@ -14,6 +14,7 @@ import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js"
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
 import { SignalJournalStrategySkill } from "./strategy/SignalJournalStrategySkill.js";
+import { ModelStrategySkill } from "./strategy/ModelStrategySkill.js";
 import { selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
 import type { BtcCandleMetadata, MacroSnapshot, MarketPricing, SelectedBtcFiveMinuteMarket } from "./domain/types.js";
@@ -30,6 +31,12 @@ import {
 } from "./app.js";
 
 function makeDependencies(config: AppConfig) {
+  const modelInferenceClient = config.modelInferenceEndpointUrl
+    ? new LocalPythonInferenceClient({
+        endpointUrl: config.modelInferenceEndpointUrl,
+        timeoutMs: config.modelInferenceTimeoutMs
+      })
+    : undefined;
   return {
     cmc: new RestCmcAdapter(config),
     pyth: new HistoryPythAdapter(config),
@@ -37,21 +44,16 @@ function makeDependencies(config: AppConfig) {
     predictFunAuth: new RestPredictFunAuthAdapter(config, new PredictFunSdkAuthSigner(config)),
     predictFunExecutionWallet: new FilePredictFunExecutionWalletAdapter(config),
     twak: new EnvTrustWalletAgentKitAdapter(config),
-    strategy: makeStrategy(config),
+    strategy: makeStrategy(config, modelInferenceClient),
     repository: new NoopSqliteRunRepository(config.databasePath),
     paperJournal: new JsonlPaperJournal(config.paperJournalPath),
     predictFunOrderExecutor: new PredictFunOrderExecutor(config),
     predictFunPositions: new RestPredictFunPositionsAdapter(config),
-    modelInferenceClient: config.modelInferenceEndpointUrl
-      ? new LocalPythonInferenceClient({
-          endpointUrl: config.modelInferenceEndpointUrl,
-          timeoutMs: config.modelInferenceTimeoutMs
-        })
-      : undefined
+    modelInferenceClient
   };
 }
 
-function makeStrategy(config: AppConfig) {
+function makeStrategy(config: AppConfig, modelInferenceClient?: LocalPythonInferenceClient) {
   if (config.strategySkill === "momentum") {
     return new MomentumStrategySkill({
       ...(config.strategyDynamicEdgeEnabled ? {} : { minEdge: config.strategyMinEdge }),
@@ -64,6 +66,12 @@ function makeStrategy(config: AppConfig) {
     return new SignalJournalStrategySkill({
       journalPath: config.strategySignalJournalPath,
       maxAgeSeconds: config.strategySignalMaxAgeSeconds,
+      notionalUsd: config.strategyNotionalUsd
+    });
+  }
+
+  if (config.strategySkill === "model") {
+    return new ModelStrategySkill(modelInferenceClient, {
       notionalUsd: config.strategyNotionalUsd
     });
   }
@@ -196,7 +204,12 @@ function maybeRefreshHotMarketState(config: AppConfig, dependencies: ReturnType<
     });
 }
 
-async function executeHotSignal(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>, hotState: HotMarketState) {
+async function executeHotSignal(
+  config: AppConfig,
+  dependencies: ReturnType<typeof makeDependencies>,
+  hotState: HotMarketState,
+  beforeEnter?: (marketId: string) => void | Promise<void>
+) {
   if (hotState.refreshInFlight) {
     await hotState.refreshInFlight;
   }
@@ -207,7 +220,7 @@ async function executeHotSignal(config: AppConfig, dependencies: ReturnType<type
   const decision = await dependencies.strategy.decide({
     runMode: "live",
     macro: hotState.macro ?? { capturedAt: now, source: "coinmarketcap", stubbed: true },
-    candle: hotState.candle ?? { capturedAt: now, source: "pyth-pro", symbol: "BTC", intervalMinutes: 5, stubbed: true },
+    candle: hotState.candle ?? { capturedAt: now, source: "pyth-pro", symbol: "BTC", intervalMinutes: 1, stubbed: true },
     markets: [hotState.selected.market],
     selectedMarket: hotState.selected,
     pricing: hotState.pricing
@@ -223,6 +236,9 @@ async function executeHotSignal(config: AppConfig, dependencies: ReturnType<type
           createdAt: new Date()
         }
       : decision;
+  if (blockedDecision.action === "enter") {
+    await beforeEnter?.(blockedDecision.marketId);
+  }
   const execution = await dependencies.predictFunOrderExecutor.execute(blockedDecision, "live", {
     selectedMarket: hotState.selected.market,
     pricing: hotState.pricing,
@@ -281,7 +297,16 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
   const statePath = process.env.STRIKE_BOT_LIVE_RUNNER_STATE ?? "data/live-runner/attempted-markets.json";
   const attempted = loadAttempted(statePath);
   const hotState: HotMarketState = {};
-  emitJsonLine({ event: "runner_start", mode: "node_hot_live_runner", pollMs, journal: config.strategySignalJournalPath, state: statePath, ts: new Date() });
+  const modelDriven = dependencies.strategy.name === "ModelStrategySkill";
+  emitJsonLine({
+    event: "runner_start",
+    mode: modelDriven ? "node_hot_model_live_runner" : "node_hot_live_runner",
+    pollMs,
+    journal: modelDriven ? undefined : config.strategySignalJournalPath,
+    state: statePath,
+    strategy: dependencies.strategy.name,
+    ts: new Date()
+  });
   const readiness = await liveReadiness(config, dependencies);
   emitJsonLine({ event: "preflight", ready: readiness.summary.ready, blockers: readiness.summary.blockers, warnings: readiness.summary.warnings, ts: new Date() });
   if (!readiness.summary.ready) {
@@ -291,6 +316,36 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
   emitJsonLine({ event: "hot_state_ready", marketId: hotState.selected?.id, pricingStatus: hotState.pricing?.status, ts: new Date() });
   for (;;) {
     maybeRefreshHotMarketState(config, dependencies, hotState);
+    if (modelDriven) {
+      try {
+        if (hotState.refreshInFlight) {
+          await hotState.refreshInFlight;
+        }
+        const hotMarketId = hotState.selected?.id;
+        if (hotMarketId && !attempted.has(hotMarketId)) {
+          const result = await executeHotSignal(config, dependencies, hotState, (marketId) => {
+            attempted.add(marketId);
+            saveAttempted(statePath, attempted);
+          });
+          emitJsonLine({
+            event: "model_live_tick_result",
+            hotMarket: result.market,
+            decisionAction: result.decision.action,
+            decisionReason: "reason" in result.decision ? result.decision.reason : undefined,
+            executionStatus: result.execution.status,
+            executionReason: "reason" in result.execution ? result.execution.reason : undefined,
+            broadcast: result.execution.broadcast,
+            safety: result.safety,
+            details: "details" in result.execution ? result.execution.details : undefined,
+            ts: new Date()
+          });
+        }
+      } catch (error) {
+        emitJsonLine({ event: "model_live_tick_failed", error: error instanceof Error ? error.message : String(error), ts: new Date() });
+      }
+      await new Promise((resolve) => setTimeout(resolve, Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 250));
+      continue;
+    }
     const candidate = readLatestSignalCandidate(config.strategySignalJournalPath, config.strategySignalMaxAgeSeconds);
     if (candidate && !attempted.has(candidate.marketId)) {
       attempted.add(candidate.marketId);

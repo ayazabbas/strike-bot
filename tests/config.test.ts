@@ -44,7 +44,7 @@ describe("config", () => {
       PREDICT_FUN_ACCOUNT_ADDRESS: "0x0000000000000000000000000000000000000001",
       PREDICT_FUN_PRIVY_KEY_FILE: "~/predict-privy-test-key",
       PREDICT_FUN_JWT_CACHE_FILE: "/tmp/predict-fun-jwt",
-      STRATEGY_SKILL: "signal",
+      STRATEGY_SKILL: "model",
       STRATEGY_SIGNAL_JOURNAL_PATH: "/tmp/live-ev-signals.jsonl",
       STRATEGY_SIGNAL_MAX_AGE_SECONDS: "7",
       STRATEGY_DYNAMIC_EDGE_ENABLED: "false",
@@ -64,7 +64,7 @@ describe("config", () => {
     expect(config.predictFunAccountAddress).toBe("0x0000000000000000000000000000000000000001");
     expect(config.predictFunPrivyKeyFile).toMatch(/predict-privy-test-key$/);
     expect(config.predictFunJwtCacheFile).toBe("/tmp/predict-fun-jwt");
-    expect(config.strategySkill).toBe("signal");
+    expect(config.strategySkill).toBe("model");
     expect(config.strategySignalJournalPath).toBe("/tmp/live-ev-signals.jsonl");
     expect(config.strategySignalMaxAgeSeconds).toBe(7);
     expect(config.strategyDynamicEdgeEnabled).toBe(false);

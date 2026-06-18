@@ -13,6 +13,8 @@ export type DecisionReason =
   | "candle_unavailable"
   | "candle_market_mismatch"
   | "signal_not_triggered"
+  | "model_unavailable"
+  | "model_not_configured"
   | "pricing_unavailable"
   | "price_above_threshold"
   | "risk_rejected"
@@ -214,7 +216,7 @@ export interface BtcCandleMetadata {
   readonly capturedAt: Date;
   readonly source: "pyth-pro";
   readonly symbol: AssetSymbol;
-  readonly intervalMinutes: 5;
+  readonly intervalMinutes: number;
   readonly latestCandleOpenTime?: Date;
   readonly latestCandle?: {
     readonly openTime: Date;
@@ -224,6 +226,14 @@ export interface BtcCandleMetadata {
     readonly close: number;
     readonly volume?: number;
   };
+  readonly recentCandles?: readonly {
+    readonly openTime: Date;
+    readonly open: number;
+    readonly high: number;
+    readonly low: number;
+    readonly close: number;
+    readonly volume?: number;
+  }[];
   readonly stubbed: boolean;
 }
 
@@ -240,6 +250,8 @@ export interface StrategyDecisionMetadata {
   readonly currentAskPrice?: number;
   readonly signalTiming?: Readonly<Record<string, string | number | boolean | null>>;
   readonly thresholds?: Readonly<Record<string, string | number | boolean | null>>;
+  readonly modelVersion?: string;
+  readonly modelUnavailableReason?: string;
   readonly fairThreshold?: number;
   readonly maxAcceptableAsk?: number;
   readonly askPrice?: number;

@@ -194,7 +194,7 @@ PREDICT_FUN_API_KEY_FILE=~/.pfkey
 PREDICT_FUN_PRIVY_KEY_FILE=~/.predict_privy_key
 PREDICT_FUN_JWT_CACHE_FILE=~/.predict_fun_jwt
 PREDICT_FUN_MIN_SECONDS_BEFORE_CLOSE=60
-STRATEGY_SKILL=noop # noop|momentum|signal
+STRATEGY_SKILL=noop # noop|momentum|signal|model
 STRATEGY_SIGNAL_JOURNAL_PATH=/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl
 STRATEGY_SIGNAL_MAX_AGE_SECONDS=10
 STRATEGY_DYNAMIC_EDGE_ENABLED=true
@@ -203,6 +203,10 @@ STRATEGY_NOTIONAL_USD=1
 STRATEGY_CANDLE_START_TOLERANCE_SECONDS=90
 MODEL_INFERENCE_ENDPOINT_URL= # optional local Python sklearn inference endpoint, e.g. http://127.0.0.1:8765/infer
 MODEL_INFERENCE_TIMEOUT_MS=500
+MODEL_INFERENCE_HOST=127.0.0.1
+MODEL_INFERENCE_PORT=8765
+MODEL_PROFITABILITY_MODEL_PATH=/home/ubuntu/.hermes/workspace/strike-bot-research/data/experiments/20260618_103226_ev_odds/btc_5m_ev_hist_gradient_boosting_model.pkl
+MODEL_DIRECTION_MODEL_PATH=/home/ubuntu/.hermes/workspace/strike-bot-research/data/processed/btc_5m_direction_model.pkl
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
 TWAK_ACCESS_ID=
@@ -244,6 +248,16 @@ For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file out
 `STRATEGY_CANDLE_START_TOLERANCE_SECONDS` controls how far the latest Pyth candle `openTime` may differ from the selected predict.fun market `startsAt` before `MomentumStrategySkill` refuses to trade with `candle_market_mismatch`. The default is 90 seconds because predict.fun settles from Chainlink while Pyth is reference data. `MomentumStrategySkill` also refuses to enter before `selectedMarket.startsAt` with `market_not_started`.
 
 `STRATEGY_SKILL=signal` enables `SignalJournalStrategySkill`, a production bridge from the strike-bot-research EV + direction paper signal journal into deterministic TypeScript `StrategyDecision` output. It reads only the latest non-empty JSONL row from `STRATEGY_SIGNAL_JOURNAL_PATH`, defaulting to `/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl`, and refuses stale rows older than `STRATEGY_SIGNAL_MAX_AGE_SECONDS` seconds. It enters only when the latest row is a safe `signals` row with `safety.signing=false`, `safety.broadcasting=false`, a matching selected OPEN market, available predict.fun pricing, and current ask no more than 0.03 above the model's raw ask. The signal notional is floored to the 1 USDT predict.fun production minimum and capped by `STRATEGY_NOTIONAL_USD` when that cap is at least 1; live readiness blocks caps below 1. Live execution remains separately gated by approvals, TWAK readiness, risk checks, the predict.fun 1 USDT minimum, and `MAX_TEST_TRADE_USD`.
+
+`STRATEGY_SKILL=model` enables `ModelStrategySkill`, which keeps realtime market selection, predict.fun pricing, CMC context, Pyth candle state, feature request construction, risk checks, and order approval gates in TypeScript. It calls only the configured `MODEL_INFERENCE_ENDPOINT_URL` for local sklearn scoring and enters only when the returned candidate passes the competition thresholds and current ask checks.
+
+Run the local inference server with:
+
+```bash
+npm run model-inference
+```
+
+The server in `scripts/local_model_inference_server.py` loads sklearn pickle bundles from `MODEL_PROFITABILITY_MODEL_PATH` and `MODEL_DIRECTION_MODEL_PATH` (defaults shown above), accepts the existing `ModelInferenceRequest` JSON at `POST /infer`, and returns `ModelInferenceResult` JSON. It performs no predict.fun, Pyth, CMC, wallet, signing, or broadcast calls; it scores only the posted request payload.
 
 `RUN_MODE=paper npm run tick` appends one structured JSONL paper-trading record per tick to `PAPER_JOURNAL_PATH`, defaulting to `data/paper/trades.jsonl`. The generated `data/` tree is ignored by git. Records include run/timestamp, selected BTC 5-minute market, decision and strategy metadata, predict.fun pricing, Pyth candle fields, paper fill details, safety flags, and settlement placeholders initialized to `unknown`/`null`. They intentionally do not include API keys, wallet material, or raw environment configuration. See `docs/paper-journal.md` for the schema and analysis examples.
 

@@ -296,4 +296,27 @@ describe("liveReadiness", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("blocks model strategy live readiness when inference endpoint is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-live-readiness-model-"));
+    const keyPath = join(dir, "privy-key");
+    const config = loadConfig({
+      PREDICT_FUN_API_KEY: "api-key",
+      PREDICT_FUN_PRIVY_KEY_FILE: keyPath,
+      BSC_RPC_URL: "https://bsc.example",
+      LIVE_TRADING_APPROVED: "true",
+      PREDICT_FUN_REDEMPTION_APPROVED: "true",
+      STRATEGY_SKILL: "model"
+    });
+
+    try {
+      writeFileSync(keyPath, "present-only\n", { mode: 0o600 });
+      const result = await liveReadiness(config, dependencies(config, { jwtCachePresent: true, twakReady: true, strategyName: "ModelStrategySkill" }));
+
+      expect(result.summary.ready).toBe(false);
+      expect(result.summary.blockers).toContain("model_inference_endpoint_missing");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
