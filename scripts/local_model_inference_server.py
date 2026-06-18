@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 
 DEFAULT_RESEARCH_DIR = Path("/home/ubuntu/.hermes/workspace/strike-bot-research")
-DEFAULT_MODEL_PATH = DEFAULT_RESEARCH_DIR / "data/experiments/20260618_103226_ev_odds/btc_5m_ev_hist_gradient_boosting_model.pkl"
-DEFAULT_DIRECTION_MODEL_PATH = DEFAULT_RESEARCH_DIR / "data/experiments/hackathon_session_retrain_20260618_093455/btc_5m_direction_model.pkl"
+DEFAULT_MODEL_PATH = DEFAULT_RESEARCH_DIR / "data/experiments/20260618_185155_full_model_matrix/ev_hist_gradient_boosting.pkl"
+DEFAULT_DIRECTION_MODEL_PATH = DEFAULT_RESEARCH_DIR / "data/experiments/20260618_185155_full_model_matrix/direction_logistic.pkl"
 
 
 class InferenceService:
