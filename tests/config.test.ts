@@ -30,6 +30,8 @@ describe("config", () => {
     expect(config.strategyMinEdge).toBe(0.05);
     expect(config.strategyNotionalUsd).toBe(1);
     expect(config.strategyCandleStartToleranceSeconds).toBe(90);
+    expect(config.modelInferenceEndpointUrl).toBeUndefined();
+    expect(config.modelInferenceTimeoutMs).toBe(500);
     expect(config.paperJournalPath).toBe("data/paper/trades.jsonl");
     expect(config.maxTestTradeUsd).toBe(1);
   });
@@ -49,6 +51,8 @@ describe("config", () => {
       STRATEGY_MIN_EDGE: "0.07",
       STRATEGY_NOTIONAL_USD: "0.5",
       STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
+      MODEL_INFERENCE_ENDPOINT_URL: "http://127.0.0.1:8765/infer",
+      MODEL_INFERENCE_TIMEOUT_MS: "250",
       PAPER_JOURNAL_PATH: "tmp/paper.jsonl",
       MAX_TEST_TRADE_USD: "0.05",
       PREDICT_FUN_REDEMPTION_APPROVED: "true"
@@ -67,6 +71,8 @@ describe("config", () => {
     expect(config.strategyMinEdge).toBe(0.07);
     expect(config.strategyNotionalUsd).toBe(0.5);
     expect(config.strategyCandleStartToleranceSeconds).toBe(45);
+    expect(config.modelInferenceEndpointUrl).toBe("http://127.0.0.1:8765/infer");
+    expect(config.modelInferenceTimeoutMs).toBe(250);
     expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
     expect(config.maxTestTradeUsd).toBe(0.05);
     expect(config.predictFunRedemptionApproved).toBe(true);

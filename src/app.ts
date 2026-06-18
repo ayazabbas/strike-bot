@@ -11,6 +11,7 @@ import type { RunRepository } from "./storage/RunRepository.js";
 import type { PaperJournal } from "./storage/PaperJournal.js";
 import { enrichPaperJournalSettlements } from "./storage/PaperJournal.js";
 import type { StrategySkill } from "./strategy/StrategySkill.js";
+import type { ModelInferenceClient } from "./inference/types.js";
 import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
 import { PaperExecutor } from "./execution/PaperExecutor.js";
@@ -31,6 +32,7 @@ export interface AppDependencies {
   readonly paperJournal?: PaperJournal;
   readonly predictFunOrderExecutor?: PredictFunOrderExecutor;
   readonly predictFunPositions?: PredictFunPositionsAdapter;
+  readonly modelInferenceClient?: ModelInferenceClient;
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {

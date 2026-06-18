@@ -16,7 +16,9 @@ import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
 import { SignalJournalStrategySkill } from "./strategy/SignalJournalStrategySkill.js";
 import { selectNearestTradableBtcFiveMinuteMarket } from "./domain/marketFilter.js";
 import { RiskManager } from "./risk/RiskManager.js";
-import type { MarketPricing, SelectedBtcFiveMinuteMarket } from "./domain/types.js";
+import type { BtcCandleMetadata, MacroSnapshot, MarketPricing, SelectedBtcFiveMinuteMarket } from "./domain/types.js";
+import { LocalPythonInferenceClient } from "./inference/LocalPythonInferenceClient.js";
+import { buildModelInferenceRequest } from "./inference/buildModelInferenceRequest.js";
 import {
   inspect,
   inspectPositions,
@@ -39,7 +41,13 @@ function makeDependencies(config: AppConfig) {
     repository: new NoopSqliteRunRepository(config.databasePath),
     paperJournal: new JsonlPaperJournal(config.paperJournalPath),
     predictFunOrderExecutor: new PredictFunOrderExecutor(config),
-    predictFunPositions: new RestPredictFunPositionsAdapter(config)
+    predictFunPositions: new RestPredictFunPositionsAdapter(config),
+    modelInferenceClient: config.modelInferenceEndpointUrl
+      ? new LocalPythonInferenceClient({
+          endpointUrl: config.modelInferenceEndpointUrl,
+          timeoutMs: config.modelInferenceTimeoutMs
+        })
+      : undefined
   };
 }
 
@@ -149,17 +157,27 @@ function saveAttempted(path: string, attempted: Set<string>): void {
 interface HotMarketState {
   selected?: SelectedBtcFiveMinuteMarket;
   pricing?: MarketPricing;
+  macro?: MacroSnapshot;
+  candle?: BtcCandleMetadata;
   updatedAt?: Date;
   refreshInFlight?: Promise<void>;
 }
 
 async function refreshHotMarketState(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>, state: HotMarketState): Promise<void> {
-  const marketSnapshot = await dependencies.predictFun.listMarkets();
+  const [marketSnapshot, macro, candle] = dependencies.modelInferenceClient
+    ? await Promise.all([
+        dependencies.predictFun.listMarkets(),
+        dependencies.cmc.getMacroSnapshot(),
+        dependencies.pyth.getBtcFiveMinuteCandleMetadata()
+      ])
+    : [await dependencies.predictFun.listMarkets(), undefined, undefined];
   const selected = selectNearestTradableBtcFiveMinuteMarket(marketSnapshot.markets, {
     minSecondsBeforeClose: config.predictFunMinSecondsBeforeClose
   });
   state.selected = selected;
   state.pricing = selected ? await dependencies.predictFun.getOrderbookPricing(selected.id) : undefined;
+  state.macro = macro;
+  state.candle = candle;
   state.updatedAt = new Date();
 }
 
@@ -188,8 +206,8 @@ async function executeHotSignal(config: AppConfig, dependencies: ReturnType<type
   const now = new Date();
   const decision = await dependencies.strategy.decide({
     runMode: "live",
-    macro: { capturedAt: now, source: "coinmarketcap", stubbed: true },
-    candle: { capturedAt: now, source: "pyth-pro", symbol: "BTC", intervalMinutes: 5, stubbed: true },
+    macro: hotState.macro ?? { capturedAt: now, source: "coinmarketcap", stubbed: true },
+    candle: hotState.candle ?? { capturedAt: now, source: "pyth-pro", symbol: "BTC", intervalMinutes: 5, stubbed: true },
     markets: [hotState.selected.market],
     selectedMarket: hotState.selected,
     pricing: hotState.pricing
@@ -222,6 +240,42 @@ async function executeHotSignal(config: AppConfig, dependencies: ReturnType<type
   };
 }
 
+async function inferHotMarketState(
+  dependencies: ReturnType<typeof makeDependencies>,
+  hotState: HotMarketState,
+  runMode: "live",
+  requestId: string
+): Promise<void> {
+  if (!dependencies.modelInferenceClient || !hotState.macro || !hotState.candle) {
+    return;
+  }
+
+  const request = buildModelInferenceRequest({
+    requestId,
+    capturedAt: new Date(),
+    runMode,
+    selectedMarket: hotState.selected,
+    pricing: hotState.pricing,
+    macro: hotState.macro,
+    candle: hotState.candle
+  });
+  if (!request) {
+    emitJsonLine({ event: "model_inference_skipped", reason: "request_unavailable", requestId, ts: new Date() });
+    return;
+  }
+
+  const result = await dependencies.modelInferenceClient.infer(request);
+  emitJsonLine({
+    event: "model_inference_result",
+    requestId,
+    status: result.status,
+    modelVersion: result.status === "ok" ? result.modelVersion : undefined,
+    reason: result.status === "unavailable" ? result.reason : undefined,
+    candidates: result.status === "ok" ? result.candidates : undefined,
+    ts: new Date()
+  });
+}
+
 async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>): Promise<void> {
   const pollMs = Number(process.env.STRIKE_BOT_LIVE_RUNNER_POLL_MS ?? "250");
   const statePath = process.env.STRIKE_BOT_LIVE_RUNNER_STATE ?? "data/live-runner/attempted-markets.json";
@@ -243,6 +297,7 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
       saveAttempted(statePath, attempted);
       emitJsonLine({ event: "live_tick_attempt", ...candidate, hotMarketId: hotState.selected?.id, hotStateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined, ts: new Date() });
       try {
+        await inferHotMarketState(dependencies, hotState, "live", `live-runner-${Date.now()}`);
         const result = await executeHotSignal(config, dependencies, hotState);
         emitJsonLine({
           event: "live_tick_result",
