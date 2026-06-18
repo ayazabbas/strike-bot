@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "inspect": "node --import tsx src/cli.ts inspect",
+    "live-readiness": "node --import tsx src/cli.ts live-readiness",
     "tick": "node --import tsx src/cli.ts tick",
     "positions": "node --import tsx src/cli.ts positions",
     "redeem-positions": "node --import tsx src/cli.ts redeem-positions",

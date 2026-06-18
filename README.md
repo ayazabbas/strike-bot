@@ -134,7 +134,8 @@ For agent operators, the recommended workflow is:
 1. run `inspect` to verify market data and credential readiness;
 2. run the strategy in `paper` until the journal shows clean market selection and pricing;
 3. run `dry_run` to verify order construction without posting;
-4. enable `live` only with explicit operator approval and small risk caps.
+4. run `live-readiness` to verify approvals, cached JWT, market/pricing, TWAK funding readiness, and redemption preflight state without signing or broadcasting;
+5. enable `live` only with explicit operator approval and small risk caps.
 
 ## Runtime modes
 
@@ -220,6 +221,8 @@ The predict.fun Predict account defaults to `0x5b4D5ed6eD6c16Fe9eABf552479711C50
 
 Official predict.fun REST auth is scaffolded through `GET /v1/auth/message` with `x-api-key`, Predict-account message signing, then `POST /v1/auth` with `{ signer, message, signature }`. The returned JWT is cached outside the repository at `PREDICT_FUN_JWT_CACHE_FILE`, defaulting to `~/.predict_fun_jwt`. Inspect reports only readiness fields: account address configured, auth-message endpoint reachability, token-cache presence, and JWT acquisition status. It never prints the API key, private key, signature, or JWT. Auth signing is limited to this Predict-account auth message and does not create, sign, or broadcast transactions.
 
+`npm run live-readiness` is the safe same-day preflight for going live. It calls predict.fun auth readiness with JWT acquisition disabled, checks market selection and orderbook pricing, reports whether the JWT cache and external Privy key file are present, verifies live/redemption approval flags, includes TWAK funding readiness, and fetches read-only positions plus a redemption dry-run intent count. It does not run strategy decisions, order execution, live redemption, Predict-account message signing, SDK transaction signing, JWT acquisition, or transaction broadcasts.
+
 Live predict.fun order execution is currently limited to official REST `POST /v1/orders`. It builds a signed `LIMIT` `BUY` order with `@predictdotfun/sdk` using the configured Predict account and Privy key, then submits only the REST order payload. It does not run on-chain approvals, transfer funds through TWAK, or broadcast an on-chain transaction. `dry_run` prepares and signs the order but does not POST; returned execution details are redacted and omit signatures, JWTs, API keys, and private keys. `live` additionally requires `LIVE_TRADING_APPROVED=true`, an existing JWT cache file, an OPEN predict.fun market with UP/DOWN on-chain token IDs, available ask pricing, approved risk checks, and `decision.notionalUsd <= MAX_TEST_TRADE_USD <= 0.10`.
 
 Predict.fun redemption is dry-run by default. `npm run redeem-positions` fetches read-only positions and prints the redemption plan with `signing=false` and `broadcasting=false`. The live executor is reachable only with the explicit CLI argument `npm run redeem-positions -- --live`, and it still refuses before reading the wallet or initializing the SDK unless both `LIVE_TRADING_APPROVED=true` and `PREDICT_FUN_REDEMPTION_APPROVED=true` are set, at least one redemption intent exists, the action cap is respected, `PREDICT_FUN_PRIVY_KEY_FILE` points to an external key file, and `BSC_RPC_URL` is configured. Live redemption returns only redacted transaction hash/status fields and must be operator initiated; do not run it automatically.
@@ -247,6 +250,7 @@ npm install
 npm test
 npm run typecheck
 npm run inspect
+npm run live-readiness
 RUN_MODE=paper npm run tick
 npm run positions
 npm run redeem-positions
@@ -257,6 +261,7 @@ RUN_MODE=dry_run npm run tick
 Expected early behavior:
 
 - `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, predict.fun REST auth readiness, the derived predict.fun execution wallet address when `PREDICT_FUN_PRIVY_KEY_FILE` is present, and separate TWAK funding wallet readiness. It may sign only the predict.fun auth message if API key, Predict account, Privy key, official SDK, and JWT cache path are ready; it does not sign transactions, transfer funds, or broadcast.
+- `npm run live-readiness` prints a JSON preflight with `safety.signing=false` and `safety.broadcasting=false`, plus blockers such as missing live approvals, JWT cache, market selection, pricing, TWAK readiness, or a noop strategy. It never acquires a JWT and never calls order or live redemption executors.
 - `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` by default and appends it to the paper JSONL journal; `STRATEGY_SKILL=momentum RUN_MODE=paper npm run tick` enables Phase-1 momentum paper decisions with market-start, candle-match, fair-threshold, ask, and edge metadata.
 - `npm run positions` fetches read-only predict.fun positions for `PREDICT_FUN_ACCOUNT_ADDRESS`; `npm run redeem-positions` prints a redemption dry-run plan for redeemable positions only. `npm run redeem-positions -- --live` is approval-gated and requires `LIVE_TRADING_APPROVED=true`, `PREDICT_FUN_REDEMPTION_APPROVED=true`, `PREDICT_FUN_PRIVY_KEY_FILE`, and `BSC_RPC_URL` before any wallet read, signing, SDK redemption call, or transaction broadcast can occur.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, the predict.fun REST order prerequisites are present, and `LIVE_TRADING_APPROVED=true` is explicitly set.

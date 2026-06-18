@@ -1,8 +1,9 @@
 import type { AppConfig, RunMode } from "./config.js";
+import { existsSync } from "node:fs";
 import type { CmcAdapter } from "./adapters/CmcAdapter.js";
 import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import type { PredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
-import type { PredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
+import { RestPredictFunPositionsAdapter, type PredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
 import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { PredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
@@ -28,6 +29,7 @@ export interface AppDependencies {
   readonly repository: RunRepository;
   readonly paperJournal?: PaperJournal;
   readonly predictFunOrderExecutor?: PredictFunOrderExecutor;
+  readonly predictFunPositions?: PredictFunPositionsAdapter;
 }
 
 export async function inspect(config: AppConfig, dependencies: AppDependencies) {
@@ -167,6 +169,84 @@ export async function tick(config: AppConfig, dependencies: AppDependencies, mod
   };
 }
 
+export async function liveReadiness(config: AppConfig, dependencies: AppDependencies) {
+  const capturedAt = new Date();
+  const [marketSnapshot, predictFunAuth, twak, positionsSnapshot] = await Promise.all([
+    dependencies.predictFun.listMarkets(),
+    dependencies.predictFunAuth.checkReadiness({ acquireJwt: false }),
+    dependencies.twak.checkReadiness(),
+    (dependencies.predictFunPositions ?? new RestPredictFunPositionsAdapter(config)).getPositions()
+  ]);
+  const btcFiveMinuteMarkets = filterBtcFiveMinuteMarkets(marketSnapshot.markets);
+  const selectedMarket = selectNearestTradableBtcFiveMinuteMarket(marketSnapshot.markets, {
+    minSecondsBeforeClose: config.predictFunMinSecondsBeforeClose
+  });
+  const pricing = selectedMarket ? await dependencies.predictFun.getOrderbookPricing(selectedMarket.id) : undefined;
+  const redemptionDryRun = new PredictFunRedemptionPlanner().plan(positionsSnapshot);
+  const credentials = {
+    predictFunApiKeyConfigured: Boolean(config.predictFunApiKey),
+    predictFunJwtCachePresent: predictFunAuth.tokenCachePresent,
+    privyKeyFilePresent: existsSync(config.predictFunPrivyKeyFile),
+    bscRpcConfigured: Boolean(config.bscRpcUrl),
+    liveTradingApproved: config.liveTradingApproved,
+    predictFunRedemptionApproved: config.predictFunRedemptionApproved
+  };
+  const strategy = {
+    configuredSkillName: dependencies.strategy.name,
+    noop: dependencies.strategy.name.toLowerCase().includes("noop")
+  };
+  const pricingStatus = selectedMarket ? pricing?.status ?? "unknown" : "not_requested";
+  const blockers = liveReadinessBlockers({
+    credentials,
+    strategy,
+    selectedMarket,
+    pricingStatus,
+    twakReady: twak.ready
+  });
+  const warnings = [
+    ...predictFunAuth.reasons,
+    ...twak.reasons,
+    ...(positionsSnapshot.status === "unavailable" ? [positionsSnapshot.reason ?? "positions_unavailable"] : [])
+  ];
+
+  return {
+    mode: "live_readiness" as const,
+    capturedAt,
+    safety: {
+      signing: false as const,
+      broadcasting: false as const
+    },
+    summary: {
+      ready: blockers.length === 0,
+      blockers,
+      warnings: Array.from(new Set(warnings))
+    },
+    market: {
+      total: marketSnapshot.markets.length,
+      btcFiveMinuteUpDown: btcFiveMinuteMarkets.length,
+      selected: formatSelectedMarket(selectedMarket),
+      pricing: {
+        status: pricingStatus,
+        upAskPresent: pricing?.up.bestAsk !== undefined,
+        downAskPresent: pricing?.down.bestAsk !== undefined
+      }
+    },
+    credentials,
+    strategy,
+    funding: {
+      predictFunAuth,
+      twakFundingWallet: formatTwakFundingWallet(twak)
+    },
+    twak,
+    positions: {
+      status: positionsSnapshot.status,
+      count: positionsSnapshot.positions.length,
+      redeemableCount: positionsSnapshot.positions.filter((position) => position.redeemable === true).length,
+      redemptionDryRunIntentCount: redemptionDryRun.intents.length
+    }
+  };
+}
+
 function formatTwakFundingWallet(twak: Awaited<ReturnType<TrustWalletAgentKitAdapter["checkReadiness"]>>) {
   return {
     ready: twak.ready,
@@ -205,6 +285,67 @@ function formatSelectedMarket(selected: ReturnType<typeof selectNearestTradableB
     categorySlug: selected.categorySlug,
     startsAt: selected.startsAt,
     closesAt: selected.closesAt,
-    timeRemainingSeconds: selected.timeRemainingSeconds
+    timeRemainingSeconds: selected.timeRemainingSeconds,
+    outcomeTokenIdsPresent: Boolean(selected.market.outcomeOnChainIds?.UP && selected.market.outcomeOnChainIds?.DOWN),
+    marketFlagsPresent: selected.market.isNegRisk !== undefined && selected.market.isYieldBearing !== undefined
   };
+}
+
+function liveReadinessBlockers(input: {
+  readonly credentials: {
+    readonly predictFunApiKeyConfigured: boolean;
+    readonly predictFunJwtCachePresent: boolean;
+    readonly privyKeyFilePresent: boolean;
+    readonly bscRpcConfigured: boolean;
+    readonly liveTradingApproved: boolean;
+    readonly predictFunRedemptionApproved: boolean;
+  };
+  readonly strategy: {
+    readonly noop: boolean;
+  };
+  readonly selectedMarket: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>;
+  readonly pricingStatus: string;
+  readonly twakReady: boolean;
+}): string[] {
+  const blockers: string[] = [];
+
+  if (!input.credentials.predictFunApiKeyConfigured) {
+    blockers.push("predict_fun_api_key_missing");
+  }
+  if (!input.credentials.predictFunJwtCachePresent) {
+    blockers.push("predict_fun_jwt_cache_missing");
+  }
+  if (!input.credentials.privyKeyFilePresent) {
+    blockers.push("predict_fun_privy_key_file_missing");
+  }
+  if (!input.credentials.bscRpcConfigured) {
+    blockers.push("bsc_rpc_url_missing");
+  }
+  if (!input.credentials.liveTradingApproved) {
+    blockers.push("live_trading_not_approved");
+  }
+  if (!input.credentials.predictFunRedemptionApproved) {
+    blockers.push("predict_fun_redemption_not_approved");
+  }
+  if (input.strategy.noop) {
+    blockers.push("live_strategy_is_noop");
+  }
+  if (!input.selectedMarket) {
+    blockers.push("btc_five_minute_market_not_selected");
+  } else {
+    if (!input.selectedMarket.market.outcomeOnChainIds?.UP || !input.selectedMarket.market.outcomeOnChainIds.DOWN) {
+      blockers.push("selected_market_outcome_token_ids_missing");
+    }
+    if (input.selectedMarket.market.isNegRisk === undefined || input.selectedMarket.market.isYieldBearing === undefined) {
+      blockers.push("selected_market_flags_missing");
+    }
+  }
+  if (input.selectedMarket && input.pricingStatus !== "available") {
+    blockers.push("pricing_unavailable");
+  }
+  if (!input.twakReady) {
+    blockers.push("twak_not_ready");
+  }
+
+  return blockers;
 }
