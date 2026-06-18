@@ -1,6 +1,6 @@
 import type { RunMode } from "../config.js";
 import { buildModelInferenceRequest } from "../inference/buildModelInferenceRequest.js";
-import type { ModelInferenceCandidateOutput, ModelInferenceClient } from "../inference/types.js";
+import type { ModelInferenceCandidateOutput, ModelInferenceClient, ModelInferenceRequest } from "../inference/types.js";
 import type {
   DecisionReason,
   MarketDirection,
@@ -99,16 +99,18 @@ export class ModelStrategySkill implements StrategySkill {
     }
 
     const best = bestEligibleCandidate(result.candidates, context.pricing, this.options);
+    const inferenceContext = modelInferenceMetadata(request, result.candidates, result.modelVersion, best?.direction);
     if (!best) {
       return this.noTrade("signal_not_triggered", context, createdAt, selected.id, {
         ...this.timingMetadata(createdAt, selected),
         modelVersion: result.modelVersion,
+        modelInference: inferenceContext,
         thresholds: this.thresholdMetadata()
       });
     }
 
     const currentAskPrice = askForDirection(context.pricing, best.direction);
-    const metadata = this.candidateMetadata(best, currentAskPrice, result.modelVersion);
+    const metadata = this.candidateMetadata(best, currentAskPrice, result.modelVersion, inferenceContext);
     if (currentAskPrice === undefined) {
       return this.noTrade("pricing_unavailable", context, createdAt, selected.id, metadata);
     }
@@ -157,7 +159,8 @@ export class ModelStrategySkill implements StrategySkill {
   private candidateMetadata(
     candidate: ModelInferenceCandidateOutput,
     currentAskPrice: number | undefined,
-    modelVersion: string | undefined
+    modelVersion: string | undefined,
+    modelInference: Readonly<Record<string, unknown>>
   ): StrategyDecisionMetadata {
     return {
       strategyName: this.name,
@@ -169,6 +172,7 @@ export class ModelStrategySkill implements StrategySkill {
       directionEdge: candidate.directionEdge,
       rawAskPrice: candidate.entryAsk,
       currentAskPrice,
+      modelInference,
       thresholds: this.thresholdMetadata()
     };
   }
@@ -184,6 +188,25 @@ export class ModelStrategySkill implements StrategySkill {
       minSecondsToClose: this.options.minSecondsToClose
     };
   }
+}
+
+function modelInferenceMetadata(
+  request: ModelInferenceRequest,
+  candidates: readonly ModelInferenceCandidateOutput[],
+  modelVersion: string | undefined,
+  selectedCandidateDirection: MarketDirection | undefined
+): Readonly<Record<string, unknown>> {
+  return {
+    requestId: request.requestId,
+    capturedAt: request.capturedAt,
+    modelVersion,
+    market: request.market,
+    pricing: request.pricing,
+    selectedCandidateDirection,
+    candidates: candidates.map((candidate) => ({ ...candidate })),
+    features: request.features.featureState ?? {},
+    latestCandle: request.features.latestCandle
+  };
 }
 
 function bestEligibleCandidate(

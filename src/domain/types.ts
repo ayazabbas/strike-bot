@@ -253,6 +253,7 @@ export interface StrategyDecisionMetadata {
   readonly thresholds?: Readonly<Record<string, string | number | boolean | null>>;
   readonly modelVersion?: string;
   readonly modelUnavailableReason?: string;
+  readonly modelInference?: Readonly<Record<string, unknown>>;
   readonly fairThreshold?: number;
   readonly maxAcceptableAsk?: number;
   readonly askPrice?: number;

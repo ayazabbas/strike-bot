@@ -108,6 +108,61 @@ describe("buildModelInferenceRequest", () => {
     });
   });
 
+  it("adds high-value multi-timeframe momentum/regime features for live model inference", () => {
+    const recentCandles = Array.from({ length: 241 }, (_, index) => {
+      const openTime = new Date(startsAt.getTime() - (240 - index) * 60_000);
+      const open = 100_000 - (240 - index) * 10;
+      const close = open + (index % 2 === 0 ? 5 : -3) + index;
+      return {
+        openTime,
+        open,
+        high: Math.max(open, close) + 10,
+        low: Math.min(open, close) - 10,
+        close,
+        volume: 1
+      };
+    });
+
+    const request = buildModelInferenceRequest({
+      requestId: "req-momentum",
+      capturedAt,
+      runMode: "paper",
+      selectedMarket: selectedMarket(),
+      pricing: pricing(),
+      macro: { capturedAt, source: "coinmarketcap", stubbed: false, btcUsd: 104000 },
+      candle: {
+        capturedAt,
+        source: "pyth-pro",
+        symbol: "BTC",
+        intervalMinutes: 1,
+        latestCandleOpenTime: startsAt,
+        latestCandle: recentCandles.at(-1),
+        recentCandles,
+        stubbed: false
+      }
+    });
+
+    expect(request?.features.featureState).toMatchObject({
+      return_3m_bps: expect.any(Number),
+      return_10m_bps: expect.any(Number),
+      return_15m_bps: expect.any(Number),
+      return_30m_bps: expect.any(Number),
+      return_60m_bps: expect.any(Number),
+      tf5m_return_bps: expect.any(Number),
+      tf15m_return_bps: expect.any(Number),
+      tf5m_rsi_14: expect.any(Number),
+      tf15m_rsi_14: expect.any(Number),
+      macd_histogram: expect.any(Number),
+      macd_histogram_slope: expect.any(Number),
+      rsi_14_slope_3m: expect.any(Number),
+      momentum_acceleration_5m_bps: expect.any(Number),
+      consecutive_up_1m_candles: expect.any(Number),
+      consecutive_down_1m_candles: expect.any(Number),
+      ema_stack_bullish: expect.any(Boolean),
+      ema_stack_bearish: expect.any(Boolean)
+    });
+  });
+
   it("returns undefined when pricing is unavailable or either candidate ask is missing", () => {
     expect(
       buildModelInferenceRequest({

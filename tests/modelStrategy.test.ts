@@ -99,7 +99,35 @@ describe("ModelStrategySkill", () => {
         evEdge: 0.15,
         directionEdge: 0.23,
         rawAskPrice: 0.47,
-        currentAskPrice: 0.47
+        currentAskPrice: 0.47,
+        modelInference: {
+          requestId: "paper-511762-1781784120000",
+          modelVersion: "test-model",
+          selectedCandidateDirection: "UP",
+          candidates: [
+            {
+              direction: "UP",
+              entryAsk: 0.47,
+              profitabilityProbability: 0.62,
+              predictedEv: 0.15,
+              directionProbability: 0.7,
+              directionEdge: 0.23
+            },
+            {
+              direction: "DOWN",
+              entryAsk: 0.52,
+              profitabilityProbability: 0.4,
+              predictedEv: -0.12,
+              directionProbability: 0.3,
+              directionEdge: -0.22
+            }
+          ],
+          features: expect.objectContaining({
+            elapsed_seconds: 120,
+            up_ask: 0.47,
+            down_ask: 0.52
+          })
+        }
       }
     });
   });

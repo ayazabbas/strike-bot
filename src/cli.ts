@@ -364,6 +364,8 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
             broadcast: result.execution.broadcast,
             safety: result.safety,
             details: "details" in result.execution ? result.execution.details : undefined,
+            modelInference: result.decision.metadata?.modelInference,
+            decisionMetadata: result.decision.metadata,
             ts: new Date()
           });
         }
@@ -392,6 +394,8 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
           broadcast: result.execution.broadcast,
           safety: result.safety,
           details: "details" in result.execution ? result.execution.details : undefined,
+          modelInference: result.decision.metadata?.modelInference,
+          decisionMetadata: result.decision.metadata,
           ts: new Date()
         });
       } catch (error) {

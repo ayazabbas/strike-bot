@@ -91,21 +91,47 @@ function technicalIndicators(candles: readonly Candle[]): ModelFeatureState {
   const return1m = previous && previous.close > 0 ? (latest.close - previous.close) / previous.close : null;
   const body = latest.open > 0 ? (latest.close - latest.open) / latest.open : null;
   const range = latest.open > 0 ? (latest.high - latest.low) / latest.open : null;
-  const rollingReturn5m = closes.length > 5 && closes.at(-6)! > 0 ? (latest.close - closes.at(-6)!) / closes.at(-6)! : null;
+  const rollingReturn5m = returnOverCandles(closes, 5);
   const returnSeries = pctChanges(closes);
   const realizedVol15m = std(returnSeries.slice(-15).filter(finite));
+  const rsi14Series = rollingRsiSeries(closes, 14);
+  const rsi14 = rsi14Series.at(-1) ?? null;
+  const macd = macdState(closes);
+  const ema9 = emaSeries(closes, 9).at(-1);
+  const ema21 = emaSeries(closes, 21).at(-1);
+  const ema50 = emaSeries(closes, 50).at(-1);
+  const ema21Series = emaSeries(closes, 21);
+  const ema21Slope = slopeBps(ema21Series, 1);
 
   const state: Record<string, string | number | boolean | null> = {
     return_1m_bps: return1m === null ? null : round(return1m * 10_000),
     body_bps: body === null ? null : round(body * 10_000),
     range_bps: range === null ? null : round(range * 10_000),
     rolling_return_5m_bps: rollingReturn5m === null ? null : round(rollingReturn5m * 10_000),
+    ...multiWindowReturnState(closes),
+    ...multiTimeframeState(candles),
+    realized_vol_5m_bps: realizedVolBps(returnSeries, 5),
     realized_vol_15m_bps: realizedVol15m === null ? null : round(realizedVol15m * 10_000),
+    realized_vol_30m_bps: realizedVolBps(returnSeries, 30),
     atr_14_bps: atrBps(candles, 14),
     ...bollingerState(closes, latest.close),
     rsi_7: rsi(closes, 7),
-    rsi_14: rsi(closes, 14),
-    rsi_21: rsi(closes, 21)
+    rsi_14: rsi14,
+    rsi_21: rsi(closes, 21),
+    rsi_14_slope_3m: slope(rsi14Series, 3),
+    rsi_14_slope_5m: slope(rsi14Series, 5),
+    return_1m_minus_return_5m_avg_bps: return1m !== null && rollingReturn5m !== null ? round((return1m - rollingReturn5m / 5) * 10_000) : null,
+    momentum_acceleration_3m_bps: momentumAccelerationBps(closes, 3),
+    momentum_acceleration_5m_bps: momentumAccelerationBps(closes, 5),
+    consecutive_up_1m_candles: consecutiveCandles(candles, "up"),
+    consecutive_down_1m_candles: consecutiveCandles(candles, "down"),
+    ema_9_below_21: finite(ema9) && finite(ema21) ? ema9 < ema21 : null,
+    ema_21_below_50: finite(ema21) && finite(ema50) ? ema21 < ema50 : null,
+    ema_stack_bullish: finite(ema9) && finite(ema21) && finite(ema50) ? ema9 > ema21 && ema21 > ema50 : false,
+    ema_stack_bearish: finite(ema9) && finite(ema21) && finite(ema50) ? ema9 < ema21 && ema21 < ema50 : false,
+    downtrend_strength_score: trendStrengthScore(latest.close, ema9, ema21, ema50, ema21Slope, "down"),
+    uptrend_strength_score: trendStrengthScore(latest.close, ema9, ema21, ema50, ema21Slope, "up"),
+    ...macd
   };
 
   for (const period of [9, 21, 50, 200]) {
@@ -118,6 +144,181 @@ function technicalIndicators(candles: readonly Candle[]): ModelFeatureState {
   }
 
   return state;
+}
+
+function multiWindowReturnState(closes: readonly number[]): ModelFeatureState {
+  const state: Record<string, number | null> = {};
+  for (const minutes of [3, 5, 10, 15, 30, 60]) {
+    const value = returnOverCandles(closes, minutes);
+    state[`return_${minutes}m_bps`] = value === null ? null : round(value * 10_000);
+  }
+  return state;
+}
+
+function multiTimeframeState(candles: readonly Candle[]): ModelFeatureState {
+  return {
+    ...prefixedTimeframeState("tf5m", aggregateCandles(candles, 5)),
+    ...prefixedTimeframeState("tf15m", aggregateCandles(candles, 15))
+  };
+}
+
+function prefixedTimeframeState(prefix: string, candles: readonly Candle[]): ModelFeatureState {
+  const closes = candles.map((candle) => candle.close);
+  const latest = candles.at(-1);
+  const previous = candles.at(-2);
+  const returnValue = previous && previous.close > 0 && latest ? (latest.close - previous.close) / previous.close : null;
+  const ema9Series = emaSeries(closes, 9);
+  const ema21Series = emaSeries(closes, 21);
+  const ema50Series = emaSeries(closes, 50);
+  const ema9 = ema9Series.at(-1);
+  const ema21 = ema21Series.at(-1);
+  const ema50 = ema50Series.at(-1);
+  return {
+    [`${prefix}_return_bps`]: returnValue === null ? null : round(returnValue * 10_000),
+    [`${prefix}_rsi_7`]: rsi(closes, 7),
+    [`${prefix}_rsi_14`]: rsi(closes, 14),
+    [`${prefix}_rsi_21`]: rsi(closes, 21),
+    [`${prefix}_ema_9_distance_bps`]: latest && finite(ema9) && ema9 !== 0 ? round(((latest.close - ema9) / ema9) * 10_000) : null,
+    [`${prefix}_ema_21_distance_bps`]: latest && finite(ema21) && ema21 !== 0 ? round(((latest.close - ema21) / ema21) * 10_000) : null,
+    [`${prefix}_ema_50_distance_bps`]: latest && finite(ema50) && ema50 !== 0 ? round(((latest.close - ema50) / ema50) * 10_000) : null,
+    [`${prefix}_ema_9_slope_bps`]: slopeBps(ema9Series, 1),
+    [`${prefix}_ema_21_slope_bps`]: slopeBps(ema21Series, 1),
+    [`${prefix}_ema_50_slope_bps`]: slopeBps(ema50Series, 1),
+    [`${prefix}_ema_stack_bullish`]: finite(ema9) && finite(ema21) && finite(ema50) ? ema9 > ema21 && ema21 > ema50 : false,
+    [`${prefix}_ema_stack_bearish`]: finite(ema9) && finite(ema21) && finite(ema50) ? ema9 < ema21 && ema21 < ema50 : false
+  };
+}
+
+function aggregateCandles(candles: readonly Candle[], minutes: number): Candle[] {
+  const groups = new Map<number, Candle[]>();
+  for (const candle of candles) {
+    const bucket = Math.floor(candle.openTime.getTime() / (minutes * 60_000)) * minutes * 60_000;
+    const group = groups.get(bucket) ?? [];
+    group.push(candle);
+    groups.set(bucket, group);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([bucket, group]) => {
+      const ordered = [...group].sort((left, right) => left.openTime.getTime() - right.openTime.getTime());
+      return {
+        openTime: new Date(bucket),
+        open: ordered[0].open,
+        high: Math.max(...ordered.map((candle) => candle.high)),
+        low: Math.min(...ordered.map((candle) => candle.low)),
+        close: ordered.at(-1)?.close ?? ordered[0].close,
+        volume: ordered.some((candle) => finite(candle.volume))
+          ? ordered.reduce((sum, candle) => sum + (finite(candle.volume) ? candle.volume : 0), 0)
+          : undefined
+      };
+    });
+}
+
+function returnOverCandles(closes: readonly number[], periods: number): number | null {
+  if (closes.length <= periods) {
+    return null;
+  }
+  const base = closes.at(-(periods + 1));
+  const latest = closes.at(-1);
+  return base && latest !== undefined && base > 0 ? (latest - base) / base : null;
+}
+
+function realizedVolBps(returnSeries: readonly (number | null)[], periods: number): number | null {
+  const value = std(returnSeries.slice(-periods).filter(finite));
+  return value === null ? null : round(value * 10_000);
+}
+
+function rollingRsiSeries(closes: readonly number[], period: number): number[] {
+  const out: number[] = [];
+  for (let index = period + 1; index <= closes.length; index += 1) {
+    const value = rsi(closes.slice(0, index), period);
+    if (finite(value)) {
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+function slope(values: readonly number[], periods: number): number | null {
+  if (values.length <= periods) {
+    return null;
+  }
+  const latest = values.at(-1);
+  const previous = values.at(-(periods + 1));
+  return finite(latest) && finite(previous) ? round(latest - previous) : null;
+}
+
+function slopeBps(values: readonly number[], periods: number): number | null {
+  if (values.length <= periods) {
+    return null;
+  }
+  const latest = values.at(-1);
+  const previous = values.at(-(periods + 1));
+  return finite(latest) && finite(previous) && previous !== 0 ? round(((latest - previous) / previous) * 10_000) : null;
+}
+
+function momentumAccelerationBps(closes: readonly number[], periods: number): number | null {
+  if (closes.length <= periods * 2) {
+    return null;
+  }
+  const latest = returnOverCandles(closes, periods);
+  const previousSlice = closes.slice(0, -periods);
+  const previous = returnOverCandles(previousSlice, periods);
+  return latest !== null && previous !== null ? round((latest - previous) * 10_000) : null;
+}
+
+function consecutiveCandles(candles: readonly Candle[], direction: "up" | "down"): number {
+  let count = 0;
+  for (let index = candles.length - 1; index >= 0; index -= 1) {
+    const candle = candles[index];
+    if (direction === "up" ? candle.close > candle.open : candle.close < candle.open) {
+      count += 1;
+      continue;
+    }
+    break;
+  }
+  return count;
+}
+
+function macdState(closes: readonly number[]): ModelFeatureState {
+  const fast = emaSeries(closes, 12);
+  const slow = emaSeries(closes, 26);
+  const macdLine = closes.map((_close, index) => {
+    const fastValue = fast[index];
+    const slowValue = slow[index];
+    return finite(fastValue) && finite(slowValue) ? fastValue - slowValue : Number.NaN;
+  });
+  const signalLine = emaSeries(macdLine.filter(finite), 9);
+  const latestMacd = macdLine.filter(finite).at(-1);
+  const latestSignal = signalLine.at(-1);
+  const previousMacd = macdLine.filter(finite).at(-2);
+  const previousSignal = signalLine.at(-2);
+  const histogram = finite(latestMacd) && finite(latestSignal) ? latestMacd - latestSignal : null;
+  const previousHistogram = finite(previousMacd) && finite(previousSignal) ? previousMacd - previousSignal : null;
+  return {
+    macd: histogram === null || !finite(latestMacd) ? null : round(latestMacd),
+    macd_signal: histogram === null || !finite(latestSignal) ? null : round(latestSignal),
+    macd_histogram: histogram === null ? null : round(histogram),
+    macd_histogram_slope: histogram !== null && previousHistogram !== null ? round(histogram - previousHistogram) : null
+  };
+}
+
+function trendStrengthScore(
+  close: number,
+  ema9: number | undefined,
+  ema21: number | undefined,
+  ema50: number | undefined,
+  ema21SlopeBps: number | null,
+  direction: "up" | "down"
+): number | null {
+  if (!finite(ema9) || !finite(ema21) || !finite(ema50)) {
+    return null;
+  }
+  const bullishStack = close > ema9 && ema9 > ema21 && ema21 > ema50;
+  const bearishStack = close < ema9 && ema9 < ema21 && ema21 < ema50;
+  const stackScore = direction === "up" ? (bullishStack ? 1 : 0) : bearishStack ? 1 : 0;
+  const slopeScore = ema21SlopeBps === null ? 0 : direction === "up" ? Math.max(0, ema21SlopeBps) : Math.max(0, -ema21SlopeBps);
+  return round(stackScore + slopeScore / 10);
 }
 
 function bollingerState(closes: readonly number[], latestClose: number): ModelFeatureState {
