@@ -11,7 +11,7 @@ import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
-import { inspect, inspectPositions, settlePaperJournal, tick } from "./app.js";
+import { inspect, inspectPositions, redeemPositionsDryRun, settlePaperJournal, tick } from "./app.js";
 
 function makeDependencies(config: AppConfig) {
   return {
@@ -67,6 +67,11 @@ async function main() {
 
   if (command === "positions") {
     console.log(safeJson(await inspectPositions(config, new RestPredictFunPositionsAdapter(config))));
+    return;
+  }
+
+  if (command === "redeem-positions") {
+    console.log(safeJson(await redeemPositionsDryRun(config, new RestPredictFunPositionsAdapter(config))));
     return;
   }
 

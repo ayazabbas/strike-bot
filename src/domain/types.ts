@@ -112,6 +112,65 @@ export interface PredictFunPositionsSnapshot {
   readonly positions: readonly PredictFunPosition[];
 }
 
+export type PredictFunRedemptionAction = "redeem";
+export type PredictFunRedemptionSkipReason =
+  | "non_redeemable"
+  | "missing_condition_id"
+  | "missing_index_set"
+  | "missing_amount"
+  | "missing_is_neg_risk"
+  | "missing_is_yield_bearing"
+  | "max_actions_exceeded";
+
+export interface PredictFunRedemptionSdkParams {
+  readonly conditionId: string;
+  readonly indexSet: string;
+  readonly isNegRisk: boolean;
+  readonly isYieldBearing: boolean;
+  readonly amount?: string;
+}
+
+export interface PredictFunRedemptionIntent {
+  readonly action: PredictFunRedemptionAction;
+  readonly marketId?: string;
+  readonly conditionId: string;
+  readonly indexSet: string;
+  readonly amount?: string;
+  readonly amountRaw: string;
+  readonly direction?: MarketDirection;
+  readonly outcome?: string;
+  readonly status?: string;
+  readonly isNegRisk: boolean;
+  readonly isYieldBearing: boolean;
+  readonly sdkParams: PredictFunRedemptionSdkParams;
+}
+
+export interface PredictFunRedemptionSkippedPosition {
+  readonly reason: PredictFunRedemptionSkipReason;
+  readonly marketId?: string;
+  readonly conditionId?: string;
+  readonly indexSet?: string;
+  readonly amountRaw?: string;
+  readonly direction?: MarketDirection;
+  readonly outcome?: string;
+  readonly status?: string;
+  readonly redeemable?: boolean;
+}
+
+export interface PredictFunRedemptionPlan {
+  readonly mode: "dry_run";
+  readonly dryRun: true;
+  readonly capturedAt: Date;
+  readonly sourceCapturedAt: Date;
+  readonly walletAddress: string;
+  readonly intents: readonly PredictFunRedemptionIntent[];
+  readonly skipped: readonly PredictFunRedemptionSkippedPosition[];
+  readonly safety: {
+    readonly signing: false;
+    readonly broadcasting: false;
+  };
+}
+
 export interface MacroSnapshot {
   readonly capturedAt: Date;
   readonly source: "coinmarketcap";

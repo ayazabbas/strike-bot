@@ -245,6 +245,8 @@ npm test
 npm run typecheck
 npm run inspect
 RUN_MODE=paper npm run tick
+npm run positions
+npm run redeem-positions
 npm run settle-paper
 RUN_MODE=dry_run npm run tick
 ```
@@ -253,6 +255,7 @@ Expected early behavior:
 
 - `npm run inspect` prints CMC macro snapshot, Pyth BTC candle metadata, predict.fun BTC 5-minute markets, selected market metadata, read-only orderbook pricing when available, predict.fun REST auth readiness, the derived predict.fun execution wallet address when `PREDICT_FUN_PRIVY_KEY_FILE` is present, and separate TWAK funding wallet readiness. It may sign only the predict.fun auth message if API key, Predict account, Privy key, official SDK, and JWT cache path are ready; it does not sign transactions, transfer funds, or broadcast.
 - `RUN_MODE=paper npm run tick` records a no-trade decision with reason `strategy_not_configured` by default and appends it to the paper JSONL journal; `STRATEGY_SKILL=momentum RUN_MODE=paper npm run tick` enables Phase-1 momentum paper decisions with market-start, candle-match, fair-threshold, ask, and edge metadata.
+- `npm run positions` fetches read-only predict.fun positions for `PREDICT_FUN_ACCOUNT_ADDRESS`; `npm run redeem-positions` prints a redemption dry-run plan for redeemable positions only. Redemption live execution is not implemented and still requires explicit approval, signing safeguards, TWAK readiness, and a future executor.
 - `RUN_MODE=live npm run tick` refuses to trade until strategy is configured, TWAK is ready, risk checks pass, the predict.fun REST order prerequisites are present, and `LIVE_TRADING_APPROVED=true` is explicitly set.
 
 ## Initial architecture

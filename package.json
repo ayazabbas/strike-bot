@@ -7,6 +7,7 @@
     "inspect": "node --import tsx src/cli.ts inspect",
     "tick": "node --import tsx src/cli.ts tick",
     "positions": "node --import tsx src/cli.ts positions",
+    "redeem-positions": "node --import tsx src/cli.ts redeem-positions",
     "settle-paper": "node --import tsx src/cli.ts settle-paper",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
