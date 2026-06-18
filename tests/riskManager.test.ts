@@ -33,7 +33,7 @@ describe("RiskManager", () => {
 
   it("rejects live entries above the configured ten-cent test cap", () => {
     const risk = new RiskManager(
-      loadConfig({ RUN_MODE: "live", LIVE_TRADING_APPROVED: "true", MAX_POSITION_USD: "5", MAX_TEST_TRADE_USD: "0.1" })
+      loadConfig({ RUN_MODE: "live", LIVE_TRADING_APPROVED: "true", MAX_POSITION_USD: "5", MAX_TEST_TRADE_USD: "1" })
     );
 
     expect(
@@ -41,7 +41,7 @@ describe("RiskManager", () => {
         action: "enter",
         marketId: "m1",
         direction: "UP",
-        notionalUsd: 0.11,
+        notionalUsd: 1.01,
         runMode: "live",
         createdAt: new Date()
       })

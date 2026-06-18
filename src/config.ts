@@ -46,7 +46,7 @@ export const configSchema = z.object({
   bscRpcUrl: optionalSecret,
   databasePath: z.string().min(1).default("./data/strike-bot.sqlite"),
   paperJournalPath: z.string().min(1).default("data/paper/trades.jsonl"),
-  maxTestTradeUsd: z.coerce.number().positive().max(0.1).default(0.1),
+  maxTestTradeUsd: z.coerce.number().positive().max(1).default(0.1),
   maxPositionUsd: z.coerce.number().positive().max(100).default(5),
   maxDailyLossUsd: z.coerce.number().positive().max(1_000).default(10),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),

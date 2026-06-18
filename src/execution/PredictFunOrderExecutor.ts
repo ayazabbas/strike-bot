@@ -158,7 +158,7 @@ export class PredictFunOrderExecutor {
       if (!this.config.liveTradingApproved) {
         return "live_not_approved";
       }
-      if (this.config.maxTestTradeUsd > 0.1 || decision.notionalUsd > this.config.maxTestTradeUsd) {
+      if (this.config.maxTestTradeUsd > 1 || decision.notionalUsd > this.config.maxTestTradeUsd) {
         return "max_test_trade_exceeded";
       }
       if (!existsSync(this.config.predictFunJwtCacheFile)) {

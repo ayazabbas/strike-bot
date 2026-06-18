@@ -151,7 +151,7 @@ describe("PredictFunOrderExecutor", () => {
           PREDICT_FUN_API_KEY: "api-key",
           PREDICT_FUN_PRIVY_KEY_FILE: keyPath,
           PREDICT_FUN_JWT_CACHE_FILE: jwtPath,
-          MAX_TEST_TRADE_USD: "0.1"
+          MAX_TEST_TRADE_USD: "1"
         }),
         fetchImpl,
         mockModuleLoader(builders)
@@ -199,13 +199,13 @@ describe("PredictFunOrderExecutor", () => {
         RUN_MODE: "live",
         LIVE_TRADING_APPROVED: "true",
         PREDICT_FUN_API_KEY: "api-key",
-        MAX_TEST_TRADE_USD: "0.1"
+        MAX_TEST_TRADE_USD: "1"
       }),
       fetchImpl,
       moduleLoader
     );
 
-    const result = await executor.execute(testDecision("live", { notionalUsd: 0.11 }), "live", {
+    const result = await executor.execute(testDecision("live", { notionalUsd: 1.01 }), "live", {
       selectedMarket: testMarket(),
       pricing: testPricing(),
       risk: { approved: true, reasons: [] }

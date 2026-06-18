@@ -103,6 +103,6 @@ describe("config", () => {
   });
 
   it("rejects test-trade caps over ten cents", () => {
-    expect(() => loadConfig({ MAX_TEST_TRADE_USD: "0.11" })).toThrow();
+    expect(() => loadConfig({ MAX_TEST_TRADE_USD: "1.01" })).toThrow();
   });
 });
