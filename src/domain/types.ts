@@ -17,6 +17,7 @@ export type DecisionReason =
   | "model_not_configured"
   | "pricing_unavailable"
   | "price_above_threshold"
+  | "duplicate_market_attempt"
   | "risk_rejected"
   | "live_not_approved"
   | "twak_not_ready";

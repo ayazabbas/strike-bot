@@ -1,5 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
@@ -10,6 +9,7 @@ import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
 import { JsonlPaperJournal } from "./storage/PaperJournal.js";
+import { loadAttemptedMarketIds, saveAttemptedMarketIds, tryClaimMarketAttempt } from "./storage/MarketAttemptStore.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
@@ -88,10 +88,6 @@ function safeJson(value: unknown): string {
   );
 }
 
-interface LiveRunnerState {
-  readonly attemptedMarketIds?: readonly string[];
-}
-
 function emitJsonLine(value: unknown): void {
   console.log(JSON.stringify(value, (_key, nestedValue) => (nestedValue instanceof Date ? nestedValue.toISOString() : nestedValue)));
 }
@@ -145,23 +141,6 @@ function readLatestSignalCandidate(journalPath: string, maxAgeSeconds: number): 
   return undefined;
 }
 
-function loadAttempted(path: string): Set<string> {
-  if (!existsSync(path)) {
-    return new Set();
-  }
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as LiveRunnerState;
-    return new Set((parsed.attemptedMarketIds ?? []).map(String));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveAttempted(path: string, attempted: Set<string>): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify({ attemptedMarketIds: Array.from(attempted).sort() }, null, 2));
-}
-
 interface HotMarketState {
   selected?: SelectedBtcFiveMinuteMarket;
   pricing?: MarketPricing;
@@ -208,7 +187,7 @@ async function executeHotSignal(
   config: AppConfig,
   dependencies: ReturnType<typeof makeDependencies>,
   hotState: HotMarketState,
-  beforeEnter?: (marketId: string) => void | Promise<void>
+  beforeEnter?: (marketId: string) => boolean | Promise<boolean>
 ) {
   if (hotState.refreshInFlight) {
     await hotState.refreshInFlight;
@@ -237,7 +216,29 @@ async function executeHotSignal(
         }
       : decision;
   if (blockedDecision.action === "enter") {
-    await beforeEnter?.(blockedDecision.marketId);
+    const claimed = await beforeEnter?.(blockedDecision.marketId);
+    if (claimed === false) {
+      const duplicateDecision = {
+        action: "no_trade" as const,
+        reason: "duplicate_market_attempt" as const,
+        marketId: blockedDecision.marketId,
+        runMode: "live" as const,
+        createdAt: new Date(),
+        metadata: blockedDecision.metadata
+      };
+      const execution = await dependencies.predictFunOrderExecutor.execute(duplicateDecision, "live", {
+        selectedMarket: hotState.selected.market,
+        pricing: hotState.pricing,
+        risk
+      });
+      return {
+        decision: duplicateDecision,
+        risk,
+        execution,
+        market: { id: hotState.selected.id, categorySlug: hotState.selected.categorySlug, stateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined },
+        safety: { signing: false, broadcasting: false }
+      };
+    }
   }
   const execution = await dependencies.predictFunOrderExecutor.execute(blockedDecision, "live", {
     selectedMarket: hotState.selected.market,
@@ -295,7 +296,7 @@ async function inferHotMarketState(
 async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof makeDependencies>): Promise<void> {
   const pollMs = Number(process.env.STRIKE_BOT_LIVE_RUNNER_POLL_MS ?? "250");
   const statePath = process.env.STRIKE_BOT_LIVE_RUNNER_STATE ?? "data/live-runner/attempted-markets.json";
-  const attempted = loadAttempted(statePath);
+  const attempted = loadAttemptedMarketIds(statePath);
   const hotState: HotMarketState = {};
   const modelDriven = dependencies.strategy.name === "ModelStrategySkill";
   emitJsonLine({
@@ -324,8 +325,11 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
         const hotMarketId = hotState.selected?.id;
         if (hotMarketId && !attempted.has(hotMarketId)) {
           const result = await executeHotSignal(config, dependencies, hotState, (marketId) => {
-            attempted.add(marketId);
-            saveAttempted(statePath, attempted);
+            const claimed = tryClaimMarketAttempt(statePath, marketId);
+            if (claimed) {
+              attempted.add(marketId);
+            }
+            return claimed;
           });
           emitJsonLine({
             event: "model_live_tick_result",
@@ -349,7 +353,7 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
     const candidate = readLatestSignalCandidate(config.strategySignalJournalPath, config.strategySignalMaxAgeSeconds);
     if (candidate && !attempted.has(candidate.marketId)) {
       attempted.add(candidate.marketId);
-      saveAttempted(statePath, attempted);
+      saveAttemptedMarketIds(statePath, attempted);
       emitJsonLine({ event: "live_tick_attempt", ...candidate, hotMarketId: hotState.selected?.id, hotStateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined, ts: new Date() });
       try {
         await inferHotMarketState(dependencies, hotState, "live", `live-runner-${Date.now()}`);
