@@ -145,19 +145,24 @@ function readLatestJournalRow(path: string): SignalJournalRow | undefined {
   }
 
   const lines = contents.split(/\r?\n/);
+  let latestParsed: SignalJournalRow | undefined;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]?.trim();
     if (!line) {
       continue;
     }
+    let parsed: SignalJournalRow | undefined;
     try {
-      const parsed = JSON.parse(line) as unknown;
-      return record(parsed) as SignalJournalRow | undefined;
+      parsed = record(JSON.parse(line) as unknown) as SignalJournalRow | undefined;
     } catch {
-      return undefined;
+      return latestParsed;
+    }
+    latestParsed ??= parsed;
+    if (parsed?.status === "signals") {
+      return parsed;
     }
   }
-  return undefined;
+  return latestParsed;
 }
 
 function signalMetadata(

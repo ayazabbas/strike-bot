@@ -151,27 +151,34 @@ describe("SignalJournalStrategySkill", () => {
     });
   });
 
-  it("returns no_trade for a latest no_trade journal row", async () => {
-    await withJournal(
-      {
-        captured_at: "2026-06-18T12:00:03.000Z",
+  it("uses a recent valid signal even when a newer no_trade row was appended", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-signal-journal-"));
+    const journalPath = join(dir, "signals.jsonl");
+    writeFileSync(
+      journalPath,
+      `${JSON.stringify(signalRow({ captured_at: "2026-06-18T12:00:03.000Z" }))}\n${JSON.stringify({
+        captured_at: "2026-06-18T12:00:04.000Z",
         status: "no_trade",
         reason: "no_strategy_signal",
         signals: [],
         safety: { signing: false, broadcasting: false }
-      },
-      async (journalPath) => {
-        const strategy = new SignalJournalStrategySkill({ journalPath, maxAgeSeconds: 10, notionalUsd: 0.05 }, () => now);
-
-        const decision = await strategy.decide(context());
-
-        expect(decision).toMatchObject({
-          action: "no_trade",
-          reason: "signal_not_triggered",
-          marketId: "511762"
-        });
-      }
+      })}\n`
     );
+    try {
+      const strategy = new SignalJournalStrategySkill({ journalPath, maxAgeSeconds: 10, notionalUsd: 1 }, () => now);
+
+      const decision = await strategy.decide(context());
+
+      expect(decision).toMatchObject({
+        action: "enter",
+        marketId: "511762",
+        direction: "DOWN",
+        notionalUsd: 1
+      });
+      expect(decision.metadata).toMatchObject({ sourceCapturedAt: "2026-06-18T12:00:03.000Z" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("returns no_trade when the signal market differs from the selected market", async () => {
