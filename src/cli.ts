@@ -10,6 +10,7 @@ import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAda
 import { NoopSqliteRunRepository } from "./storage/RunRepository.js";
 import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { loadAttemptedMarketIds, saveAttemptedMarketIds, tryClaimMarketAttempt } from "./storage/MarketAttemptStore.js";
+import { shouldEmitAttemptedMarketHeartbeat } from "./liveRunnerHeartbeat.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
@@ -315,6 +316,7 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
   }
   await refreshHotMarketState(config, dependencies, hotState);
   emitJsonLine({ event: "hot_state_ready", marketId: hotState.selected?.id, pricingStatus: hotState.pricing?.status, ts: new Date() });
+  const attemptedMarketHeartbeat: { marketId?: string; emittedAtMs?: number } = {};
   for (;;) {
     maybeRefreshHotMarketState(config, dependencies, hotState);
     if (modelDriven) {
@@ -323,7 +325,28 @@ async function runLiveRunner(config: AppConfig, dependencies: ReturnType<typeof 
           await hotState.refreshInFlight;
         }
         const hotMarketId = hotState.selected?.id;
-        if (hotMarketId && !attempted.has(hotMarketId)) {
+        if (hotMarketId && attempted.has(hotMarketId)) {
+          const nowMs = Date.now();
+          if (shouldEmitAttemptedMarketHeartbeat(hotMarketId, attemptedMarketHeartbeat, nowMs)) {
+            attemptedMarketHeartbeat.marketId = hotMarketId;
+            attemptedMarketHeartbeat.emittedAtMs = nowMs;
+            emitJsonLine({
+              event: "model_live_tick_result",
+              hotMarket: {
+                id: hotState.selected?.id,
+                categorySlug: hotState.selected?.categorySlug,
+                stateAgeMs: hotState.updatedAt ? Date.now() - hotState.updatedAt.getTime() : undefined
+              },
+              decisionAction: "no_trade",
+              decisionReason: "duplicate_market_attempt",
+              executionStatus: "skipped",
+              executionReason: "duplicate_market_attempt",
+              broadcast: false,
+              safety: { signing: false, broadcasting: false },
+              ts: new Date()
+            });
+          }
+        } else if (hotMarketId) {
           const result = await executeHotSignal(config, dependencies, hotState, (marketId) => {
             const claimed = tryClaimMarketAttempt(statePath, marketId);
             if (claimed) {
