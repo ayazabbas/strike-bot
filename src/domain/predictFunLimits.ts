@@ -1,0 +1,1 @@
+export const PREDICT_FUN_MIN_ORDER_NOTIONAL_USD = 1;

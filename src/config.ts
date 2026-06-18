@@ -2,6 +2,7 @@ import { z } from "zod";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { PREDICT_FUN_MIN_ORDER_NOTIONAL_USD } from "./domain/predictFunLimits.js";
 
 export const runModeSchema = z.enum(["inspect", "paper", "dry_run", "live"]);
 export type RunMode = z.infer<typeof runModeSchema>;
@@ -44,14 +45,14 @@ export const configSchema = z.object({
   strategySignalMaxAgeSeconds: z.coerce.number().int().positive().default(10),
   strategyDynamicEdgeEnabled: booleanFromEnv.default(true),
   strategyMinEdge: z.coerce.number().nonnegative().max(1).default(0.05),
-  strategyNotionalUsd: z.coerce.number().positive().max(5).default(0.05),
+  strategyNotionalUsd: z.coerce.number().positive().max(5).default(PREDICT_FUN_MIN_ORDER_NOTIONAL_USD),
   strategyCandleStartToleranceSeconds: z.coerce.number().int().nonnegative().default(90),
   trustWalletAgentKitEnabled: booleanFromEnv.default(true),
   trustWalletAgentKitConfigPath: optionalSecret,
   bscRpcUrl: optionalSecret,
   databasePath: z.string().min(1).default("./data/strike-bot.sqlite"),
   paperJournalPath: z.string().min(1).default("data/paper/trades.jsonl"),
-  maxTestTradeUsd: z.coerce.number().positive().max(1).default(0.1),
+  maxTestTradeUsd: z.coerce.number().positive().max(1).default(PREDICT_FUN_MIN_ORDER_NOTIONAL_USD),
   maxPositionUsd: z.coerce.number().positive().max(100).default(5),
   maxDailyLossUsd: z.coerce.number().positive().max(1_000).default(10),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),

@@ -199,7 +199,7 @@ STRATEGY_SIGNAL_JOURNAL_PATH=/home/ubuntu/.hermes/workspace/strike-bot-research/
 STRATEGY_SIGNAL_MAX_AGE_SECONDS=10
 STRATEGY_DYNAMIC_EDGE_ENABLED=true
 STRATEGY_MIN_EDGE=0.05 # fallback when STRATEGY_DYNAMIC_EDGE_ENABLED=false
-STRATEGY_NOTIONAL_USD=0.05
+STRATEGY_NOTIONAL_USD=1
 STRATEGY_CANDLE_START_TOLERANCE_SECONDS=90
 TRUST_WALLET_AGENT_KIT_ENABLED=true
 TRUST_WALLET_AGENT_KIT_CONFIG_PATH=
@@ -211,7 +211,7 @@ TWAK_WALLET_PASSWORD_FILE=
 BSC_RPC_URL=
 DATABASE_PATH=./data/strike-bot.sqlite
 PAPER_JOURNAL_PATH=data/paper/trades.jsonl
-MAX_TEST_TRADE_USD=0.10
+MAX_TEST_TRADE_USD=1
 MAX_POSITION_USD=5
 MAX_DAILY_LOSS_USD=10
 LOG_LEVEL=info
@@ -225,7 +225,9 @@ Official predict.fun REST auth is scaffolded through `GET /v1/auth/message` with
 
 `npm run live-readiness` is the safe same-day preflight for going live. It calls predict.fun auth readiness with JWT acquisition disabled, checks market selection and orderbook pricing, reports whether the JWT cache and external Privy key file are present, verifies live/redemption approval flags, includes TWAK funding readiness, and fetches read-only positions plus a redemption dry-run intent count. It does not run strategy decisions, order execution, live redemption, Predict-account message signing, SDK transaction signing, JWT acquisition, or transaction broadcasts.
 
-Live predict.fun order execution is currently limited to official REST `POST /v1/orders`. It builds a signed `LIMIT` `BUY` order with `@predictdotfun/sdk` using the configured Predict account and Privy key, then submits only the REST order payload. It does not run on-chain approvals, transfer funds through TWAK, or broadcast an on-chain transaction. `dry_run` prepares and signs the order but does not POST; returned execution details are redacted and omit signatures, JWTs, API keys, and private keys. `live` additionally requires `LIVE_TRADING_APPROVED=true`, an existing JWT cache file, an OPEN predict.fun market with UP/DOWN on-chain token IDs, available ask pricing, approved risk checks, and `decision.notionalUsd <= MAX_TEST_TRADE_USD <= 0.10`.
+Live predict.fun order execution is currently limited to official REST `POST /v1/orders`. It builds a signed `LIMIT` `BUY` order with `@predictdotfun/sdk` using the configured Predict account and Privy key, then submits only the REST order payload. It does not run on-chain approvals, transfer funds through TWAK, or broadcast an on-chain transaction. `dry_run` prepares and signs the order but does not POST; returned execution details are redacted and omit signatures, JWTs, API keys, and private keys. `live` additionally requires `LIVE_TRADING_APPROVED=true`, an existing JWT cache file, an OPEN predict.fun market with UP/DOWN on-chain token IDs, available ask pricing, approved risk checks, and `1 <= decision.notionalUsd <= MAX_TEST_TRADE_USD <= 1`.
+
+predict.fun live orders have a 1 USDT minimum notional. `MAX_TEST_TRADE_USD` defaults to 1 and remains capped at 1 for small-fund production testing. `STRATEGY_NOTIONAL_USD` is the strategy production cap; it defaults to 1, may be configured up to 5 for paper/research sizing, and must be at least 1 for live readiness.
 
 Predict.fun redemption is dry-run by default. `npm run redeem-positions` fetches read-only positions and prints the redemption plan with `signing=false` and `broadcasting=false`. The live executor is reachable only with the explicit CLI argument `npm run redeem-positions -- --live`, and it still refuses before reading the wallet or initializing the SDK unless both `LIVE_TRADING_APPROVED=true` and `PREDICT_FUN_REDEMPTION_APPROVED=true` are set, at least one redemption intent exists, the action cap is respected, `PREDICT_FUN_PRIVY_KEY_FILE` points to an external key file, and `BSC_RPC_URL` is configured. Live redemption returns only redacted transaction hash/status fields and must be operator initiated; do not run it automatically.
 
@@ -239,7 +241,7 @@ For predict.fun, prefer `PREDICT_FUN_API_KEY_FILE` pointing to a secret file out
 
 `STRATEGY_CANDLE_START_TOLERANCE_SECONDS` controls how far the latest Pyth candle `openTime` may differ from the selected predict.fun market `startsAt` before `MomentumStrategySkill` refuses to trade with `candle_market_mismatch`. The default is 90 seconds because predict.fun settles from Chainlink while Pyth is reference data. `MomentumStrategySkill` also refuses to enter before `selectedMarket.startsAt` with `market_not_started`.
 
-`STRATEGY_SKILL=signal` enables `SignalJournalStrategySkill`, a production bridge from the strike-bot-research EV + direction paper signal journal into deterministic TypeScript `StrategyDecision` output. It reads only the latest non-empty JSONL row from `STRATEGY_SIGNAL_JOURNAL_PATH`, defaulting to `/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl`, and refuses stale rows older than `STRATEGY_SIGNAL_MAX_AGE_SECONDS` seconds. It enters only when the latest row is a safe `signals` row with `safety.signing=false`, `safety.broadcasting=false`, a matching selected OPEN market, available predict.fun pricing, and current ask no more than 0.03 above the model's raw ask. The signal notional is capped by `STRATEGY_NOTIONAL_USD`; live execution remains separately gated by approvals, TWAK readiness, risk checks, and `MAX_TEST_TRADE_USD`.
+`STRATEGY_SKILL=signal` enables `SignalJournalStrategySkill`, a production bridge from the strike-bot-research EV + direction paper signal journal into deterministic TypeScript `StrategyDecision` output. It reads only the latest non-empty JSONL row from `STRATEGY_SIGNAL_JOURNAL_PATH`, defaulting to `/home/ubuntu/.hermes/workspace/strike-bot-research/data/paper/live-ev-signals.jsonl`, and refuses stale rows older than `STRATEGY_SIGNAL_MAX_AGE_SECONDS` seconds. It enters only when the latest row is a safe `signals` row with `safety.signing=false`, `safety.broadcasting=false`, a matching selected OPEN market, available predict.fun pricing, and current ask no more than 0.03 above the model's raw ask. The signal notional is floored to the 1 USDT predict.fun production minimum and capped by `STRATEGY_NOTIONAL_USD` when that cap is at least 1; live readiness blocks caps below 1. Live execution remains separately gated by approvals, TWAK readiness, risk checks, the predict.fun 1 USDT minimum, and `MAX_TEST_TRADE_USD`.
 
 `RUN_MODE=paper npm run tick` appends one structured JSONL paper-trading record per tick to `PAPER_JOURNAL_PATH`, defaulting to `data/paper/trades.jsonl`. The generated `data/` tree is ignored by git. Records include run/timestamp, selected BTC 5-minute market, decision and strategy metadata, predict.fun pricing, Pyth candle fields, paper fill details, safety flags, and settlement placeholders initialized to `unknown`/`null`. They intentionally do not include API keys, wallet material, or raw environment configuration. See `docs/paper-journal.md` for the schema and analysis examples.
 

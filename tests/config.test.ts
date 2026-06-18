@@ -28,9 +28,10 @@ describe("config", () => {
     expect(config.strategySignalMaxAgeSeconds).toBe(10);
     expect(config.strategyDynamicEdgeEnabled).toBe(true);
     expect(config.strategyMinEdge).toBe(0.05);
+    expect(config.strategyNotionalUsd).toBe(1);
     expect(config.strategyCandleStartToleranceSeconds).toBe(90);
     expect(config.paperJournalPath).toBe("data/paper/trades.jsonl");
-    expect(config.maxTestTradeUsd).toBe(0.1);
+    expect(config.maxTestTradeUsd).toBe(1);
   });
 
   it("loads read-only adapter settings from environment names", () => {
@@ -46,6 +47,7 @@ describe("config", () => {
       STRATEGY_SIGNAL_MAX_AGE_SECONDS: "7",
       STRATEGY_DYNAMIC_EDGE_ENABLED: "false",
       STRATEGY_MIN_EDGE: "0.07",
+      STRATEGY_NOTIONAL_USD: "0.5",
       STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
       PAPER_JOURNAL_PATH: "tmp/paper.jsonl",
       MAX_TEST_TRADE_USD: "0.05",
@@ -63,6 +65,7 @@ describe("config", () => {
     expect(config.strategySignalMaxAgeSeconds).toBe(7);
     expect(config.strategyDynamicEdgeEnabled).toBe(false);
     expect(config.strategyMinEdge).toBe(0.07);
+    expect(config.strategyNotionalUsd).toBe(0.5);
     expect(config.strategyCandleStartToleranceSeconds).toBe(45);
     expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
     expect(config.maxTestTradeUsd).toBe(0.05);
@@ -113,7 +116,7 @@ describe("config", () => {
     expect(() => loadConfig({ RUN_MODE: "mainnet_send" })).toThrow();
   });
 
-  it("rejects test-trade caps over ten cents", () => {
+  it("rejects test-trade caps over one dollar", () => {
     expect(() => loadConfig({ MAX_TEST_TRADE_USD: "1.01" })).toThrow();
   });
 });

@@ -17,6 +17,7 @@ import { PaperExecutor } from "./execution/PaperExecutor.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { PredictFunRedemptionExecutor } from "./execution/PredictFunRedemptionExecutor.js";
 import { PredictFunRedemptionPlanner } from "./execution/PredictFunRedemptionPlanner.js";
+import { PREDICT_FUN_MIN_ORDER_NOTIONAL_USD } from "./domain/predictFunLimits.js";
 
 export interface AppDependencies {
   readonly cmc: CmcAdapter;
@@ -189,11 +190,15 @@ export async function liveReadiness(config: AppConfig, dependencies: AppDependen
     privyKeyFilePresent: existsSync(config.predictFunPrivyKeyFile),
     bscRpcConfigured: Boolean(config.bscRpcUrl),
     liveTradingApproved: config.liveTradingApproved,
-    predictFunRedemptionApproved: config.predictFunRedemptionApproved
+    predictFunRedemptionApproved: config.predictFunRedemptionApproved,
+    maxTestTradeUsd: config.maxTestTradeUsd,
+    predictFunMinOrderNotionalUsd: PREDICT_FUN_MIN_ORDER_NOTIONAL_USD
   };
   const strategy = {
     configuredSkillName: dependencies.strategy.name,
-    noop: dependencies.strategy.name.toLowerCase().includes("noop")
+    noop: dependencies.strategy.name.toLowerCase().includes("noop"),
+    notionalUsd: config.strategyNotionalUsd,
+    predictFunMinOrderNotionalUsd: PREDICT_FUN_MIN_ORDER_NOTIONAL_USD
   };
   const pricingStatus = selectedMarket ? pricing?.status ?? "unknown" : "not_requested";
   const blockers = liveReadinessBlockers({
@@ -299,9 +304,11 @@ function liveReadinessBlockers(input: {
     readonly bscRpcConfigured: boolean;
     readonly liveTradingApproved: boolean;
     readonly predictFunRedemptionApproved: boolean;
+    readonly maxTestTradeUsd: number;
   };
   readonly strategy: {
     readonly noop: boolean;
+    readonly notionalUsd: number;
   };
   readonly selectedMarket: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>;
   readonly pricingStatus: string;
@@ -327,8 +334,14 @@ function liveReadinessBlockers(input: {
   if (!input.credentials.predictFunRedemptionApproved) {
     blockers.push("predict_fun_redemption_not_approved");
   }
+  if (input.credentials.maxTestTradeUsd < PREDICT_FUN_MIN_ORDER_NOTIONAL_USD) {
+    blockers.push("max_test_trade_below_predict_fun_minimum");
+  }
   if (input.strategy.noop) {
     blockers.push("live_strategy_is_noop");
+  }
+  if (input.strategy.notionalUsd < PREDICT_FUN_MIN_ORDER_NOTIONAL_USD) {
+    blockers.push("strategy_notional_below_predict_fun_minimum");
   }
   if (!input.selectedMarket) {
     blockers.push("btc_five_minute_market_not_selected");

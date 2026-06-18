@@ -94,9 +94,9 @@ function withJournal(line: unknown, test: (journalPath: string) => Promise<void>
 }
 
 describe("SignalJournalStrategySkill", () => {
-  it("emits enter for a matching latest signal row with capped notional and metadata", async () => {
+  it("emits enter for a matching latest signal row with production-minimum notional and metadata", async () => {
     await withJournal(signalRow(), async (journalPath) => {
-      const strategy = new SignalJournalStrategySkill({ journalPath, maxAgeSeconds: 10, notionalUsd: 0.05 }, () => now);
+      const strategy = new SignalJournalStrategySkill({ journalPath, maxAgeSeconds: 10, notionalUsd: 1 }, () => now);
 
       const decision = await strategy.decide(context());
 
@@ -104,7 +104,7 @@ describe("SignalJournalStrategySkill", () => {
         action: "enter",
         marketId: "511762",
         direction: "DOWN",
-        notionalUsd: 0.05,
+        notionalUsd: 1,
         runMode: "paper"
       });
       expect(decision.metadata).toMatchObject({
@@ -119,6 +119,19 @@ describe("SignalJournalStrategySkill", () => {
         currentAskPrice: 0.52,
         signalTiming: { elapsedSeconds: 91, label: "early" },
         thresholds: { minProfitabilityProbability: 0.45, entryAskMax: 0.55 }
+      });
+    });
+  });
+
+  it("emits the configured cap when the cap is below the production minimum", async () => {
+    await withJournal(signalRow(), async (journalPath) => {
+      const strategy = new SignalJournalStrategySkill({ journalPath, maxAgeSeconds: 10, notionalUsd: 0.5 }, () => now);
+
+      const decision = await strategy.decide(context());
+
+      expect(decision).toMatchObject({
+        action: "enter",
+        notionalUsd: 0.5
       });
     });
   });

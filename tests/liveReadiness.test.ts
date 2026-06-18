@@ -240,7 +240,13 @@ describe("liveReadiness", () => {
         privyKeyFilePresent: true,
         bscRpcConfigured: true,
         liveTradingApproved: true,
-        predictFunRedemptionApproved: true
+        predictFunRedemptionApproved: true,
+        maxTestTradeUsd: 1,
+        predictFunMinOrderNotionalUsd: 1
+      });
+      expect(result.strategy).toMatchObject({
+        notionalUsd: 1,
+        predictFunMinOrderNotionalUsd: 1
       });
       expect(result.positions).toMatchObject({
         status: "available",
@@ -248,6 +254,44 @@ describe("liveReadiness", () => {
         redeemableCount: 1,
         redemptionDryRunIntentCount: 1
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks live readiness when configured sizing is below predict.fun minimum", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "strike-bot-live-readiness-"));
+    const keyPath = join(dir, "privy-key");
+    const config = loadConfig({
+      PREDICT_FUN_API_KEY: "api-key",
+      PREDICT_FUN_PRIVY_KEY_FILE: keyPath,
+      BSC_RPC_URL: "https://bsc.example",
+      LIVE_TRADING_APPROVED: "true",
+      PREDICT_FUN_REDEMPTION_APPROVED: "true",
+      STRATEGY_SKILL: "signal",
+      STRATEGY_NOTIONAL_USD: "0.5",
+      MAX_TEST_TRADE_USD: "0.5"
+    });
+
+    try {
+      writeFileSync(keyPath, "present-only\n", { mode: 0o600 });
+      const deps = dependencies(config, {
+        jwtCachePresent: true,
+        twakReady: true,
+        strategyName: "SignalJournalStrategySkill"
+      });
+
+      const result = await liveReadiness(config, deps);
+
+      expect(result.summary.ready).toBe(false);
+      expect(result.summary.blockers).toEqual(
+        expect.arrayContaining([
+          "max_test_trade_below_predict_fun_minimum",
+          "strategy_notional_below_predict_fun_minimum"
+        ])
+      );
+      expect(result.credentials).toMatchObject({ maxTestTradeUsd: 0.5, predictFunMinOrderNotionalUsd: 1 });
+      expect(result.strategy).toMatchObject({ notionalUsd: 0.5, predictFunMinOrderNotionalUsd: 1 });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

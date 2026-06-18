@@ -12,6 +12,7 @@ import type {
 } from "../domain/types.js";
 import type { RiskCheckResult } from "../risk/RiskManager.js";
 import { normalizePrivateKey } from "../adapters/PredictFunExecutionWalletAdapter.js";
+import { PREDICT_FUN_MIN_ORDER_NOTIONAL_USD } from "../domain/predictFunLimits.js";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 type ModuleLoader = (specifier: string) => Promise<unknown>;
@@ -146,6 +147,10 @@ export class PredictFunOrderExecutor {
       readonly risk?: RiskCheckResult;
     }
   ): string | undefined {
+    if ((mode === "dry_run" || mode === "live") && decision.notionalUsd < PREDICT_FUN_MIN_ORDER_NOTIONAL_USD) {
+      return "predict_fun_min_order_notional_not_met";
+    }
+
     if (!this.config.predictFunApiKey) {
       return "predict_fun_api_key_missing";
     }

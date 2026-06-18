@@ -48,7 +48,7 @@ function testDecision(mode: "dry_run" | "live", overrides: Partial<EnterDecision
     action: "enter",
     marketId: "472571",
     direction: "UP",
-    notionalUsd: 0.1,
+    notionalUsd: 1,
     runMode: mode,
     createdAt: new Date(),
     ...overrides
@@ -212,6 +212,33 @@ describe("PredictFunOrderExecutor", () => {
     });
 
     expect(result).toMatchObject({ broadcast: false, status: "skipped", reason: "max_test_trade_exceeded" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(moduleLoader).not.toHaveBeenCalled();
+  });
+
+  it("refuses dry-run orders below predict.fun minimum before wallet, SDK, or fetch", async () => {
+    const fetchImpl = vi.fn();
+    const moduleLoader = vi.fn();
+    const executor = new PredictFunOrderExecutor(
+      loadConfig({
+        RUN_MODE: "dry_run",
+        PREDICT_FUN_API_KEY: "api-key"
+      }),
+      fetchImpl,
+      moduleLoader
+    );
+
+    const result = await executor.execute(testDecision("dry_run", { notionalUsd: 0.99 }), "dry_run", {
+      selectedMarket: testMarket(),
+      pricing: testPricing(),
+      risk: { approved: true, reasons: [] }
+    });
+
+    expect(result).toMatchObject({
+      broadcast: false,
+      status: "skipped",
+      reason: "predict_fun_min_order_notional_not_met"
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(moduleLoader).not.toHaveBeenCalled();
   });

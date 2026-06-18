@@ -6,6 +6,7 @@ import type {
   StrategyDecision,
   StrategyDecisionMetadata
 } from "../domain/types.js";
+import { PREDICT_FUN_MIN_ORDER_NOTIONAL_USD } from "../domain/predictFunLimits.js";
 import type { StrategyContext, StrategySkill } from "./StrategySkill.js";
 
 export interface SignalJournalStrategyOptions {
@@ -110,7 +111,7 @@ export class SignalJournalStrategySkill implements StrategySkill {
       action: "enter",
       marketId: selected.id,
       direction,
-      notionalUsd: Math.min(finiteNumber(signal.notionalUsd) ?? this.options.notionalUsd, this.options.notionalUsd),
+      notionalUsd: clampSignalNotional(finiteNumber(signal.notionalUsd), this.options.notionalUsd),
       runMode: context.runMode,
       createdAt,
       metadata
@@ -203,6 +204,10 @@ function askForDirection(pricing: MarketPricing, direction: MarketDirection): nu
 
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function clampSignalNotional(signalNotionalUsd: number | undefined, strategyNotionalUsd: number): number {
+  return Math.min(Math.max(signalNotionalUsd ?? PREDICT_FUN_MIN_ORDER_NOTIONAL_USD, PREDICT_FUN_MIN_ORDER_NOTIONAL_USD), strategyNotionalUsd);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
