@@ -2,6 +2,7 @@ import { loadConfig, runModeSchema, type AppConfig } from "./config.js";
 import { RestCmcAdapter } from "./adapters/CmcAdapter.js";
 import { RestPredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import { PredictFunSdkAuthSigner, RestPredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
+import { RestPredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
 import { FilePredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
 import { HistoryPythAdapter } from "./adapters/PythAdapter.js";
 import { EnvTrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
@@ -10,7 +11,7 @@ import { JsonlPaperJournal } from "./storage/PaperJournal.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
 import { NoopStrategySkill } from "./strategy/NoopStrategySkill.js";
 import { MomentumStrategySkill } from "./strategy/MomentumStrategySkill.js";
-import { inspect, settlePaperJournal, tick } from "./app.js";
+import { inspect, inspectPositions, settlePaperJournal, tick } from "./app.js";
 
 function makeDependencies(config: AppConfig) {
   return {
@@ -61,6 +62,11 @@ async function main() {
 
   if (command === "settle-paper") {
     console.log(safeJson(await settlePaperJournal(config, dependencies)));
+    return;
+  }
+
+  if (command === "positions") {
+    console.log(safeJson(await inspectPositions(config, new RestPredictFunPositionsAdapter(config))));
     return;
   }
 

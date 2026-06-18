@@ -94,34 +94,42 @@ Track 2 story:
 
 ## 3. Current State vs Requirements
 
-Already done:
+Already done (updated 2026-06-18):
 
 - predict.fun read-only BTC 5m market discovery and pricing.
+- predict.fun REST auth scaffolding and JWT cache path exist.
+- predict.fun `POST /v1/orders` live LIMIT BUY path exists behind `RUN_MODE=live`, `LIVE_TRADING_APPROVED=true`, max-test-trade cap, JWT cache, SDK signing, approval checks, and risk gates.
+- One-dollar live order payload issues were fixed: LIMIT order body no longer includes rejected `reservedBalancePolicy` / `isFillOrKill` fields.
 - Pyth Lazer realtime BTC stream in paper runner.
 - Paper journal and settled legacy paper trades.
-- EV/HGB model trained and latest conservative hackathon rule now running in paper mode.
+- EV + direction ensemble paper lane is active in `strike-bot-research` with fresh journal data, fill penalty, direction edge metadata, and no signing/broadcasting.
 - TWAK CLI installed and wallet created.
 - TWAK funding wallet separated from predict.fun Privy execution wallet.
 - predict.fun Privy execution key derives address safely.
 - Safety gates: inspect/paper modes are no signing/no broadcasting.
 - BNB hack research artifacts and saved candidate configs exist.
 
-Gaps to close:
+Gaps to close for productionisation:
 
-1. **Agent identity/on-chain registration is not done.**
-   - Need ERC-8004 registration via BNB Agent SDK before June 22.
-2. **CMC Agent Hub is not first-class in the live loop.**
+1. **predict.fun position lifecycle is incomplete.**
+   - Need live-safe positions adapter for `GET /v1/positions/<wallet>` and normalized rows containing `conditionId`, `indexSet`, amount, market flags, side/outcome, redeemable/mergeable state, and market id.
+   - Need redemption executor using SDK `OrderBuilder.redeemPositions({ conditionId, indexSet, amount?, isNegRisk, isYieldBearing })`.
+   - Need merge executor for equal opposing positions using SDK `mergePositions({ conditionId, amount, isNegRisk, isYieldBearing })`.
+   - All redemption/merge paths must be inspect/dry-run by default and require explicit live approval before transaction broadcast.
+2. **Production portfolio/risk accounting is incomplete.**
+   - Need open-position exposure, realized PnL, trade count, drawdown, outstanding orders, settlement/redeemable state, and daily caps in a single scorecard.
+3. **Agent identity/on-chain registration is not done.**
+   - Need ERC-8004 registration via BNB Agent SDK before June 22; mainnet registration still requires explicit Ayaz approval.
+4. **CMC Agent Hub is not first-class in the live loop.**
    - Current CMC adapter is only macro snapshot/stub-ish; not Agent Hub MCP/skill-driven.
-3. **Strategy tuning is not agentic yet.**
+5. **Strategy tuning is not agentic yet.**
    - Latest rule is configured manually, not produced by a CMC Strategy Skill and clamped by policy.
-4. **TWAK funding ops are readiness-only.**
+6. **TWAK funding ops are readiness-only.**
    - Need balance checks, transfer/deposit planning, and live-gated funding operations.
-5. **predict.fun live trading still needs REST auth and order-path validation.**
-   - REST JWT auth is scaffolded, but live credentials, official SDK signer shape, and order submission remain unvalidated.
-6. **Wallet registration decision is unresolved for Track 1 scoring.**
+7. **Wallet registration decision is unresolved for Track 1 scoring.**
    - Need decide whether judging tracks the registered ERC-8004 owner wallet, the trading wallet, or arbitrary submitted wallet(s).
-7. **Track 2 Agent Skill package is not authored/submitted.**
-8. **Demo/submission artifacts are missing.**
+8. **Track 2 Agent Skill package is not authored/submitted.**
+9. **Demo/submission artifacts are missing.**
    - README, architecture diagram, demo video/script, live dashboard/status, on-chain registration proof, paper/live PnL report.
 
 ---
@@ -511,52 +519,119 @@ export interface CmcAgentHubSnapshot {
 
 ---
 
-### Phase F — predict.fun live trading path
+### Phase F — predict.fun production trading path
 
-#### Task F1: Add GraphQL metadata adapter
+#### Task F0: Confirm current live order path still works in dry-run
 
-**Objective:** Fetch exact predict.fun metadata needed for dry-run order planning.
+**Objective:** Re-baseline the existing order executor before adding position lifecycle features.
 
 **Files:**
-- Create: `src/adapters/PredictFunGraphqlAdapter.ts`
-- Test: `tests/predictFunGraphqlAdapter.test.ts`
+- Inspect: `src/execution/PredictFunOrderExecutor.ts`
+- Test: `tests/predictFunOrderExecutor.test.ts`
 
-**Data needed:**
+**Steps:**
+1. Run `npm test -- tests/predictFunOrderExecutor.test.ts`.
+2. Run `npm run typecheck`.
+3. Run a safe `RUN_MODE=dry_run npm run tick` with live credentials present but no broadcast.
+4. Confirm dry-run prepares a redacted LIMIT order and inspect/paper remain no-sign/no-broadcast.
+
+#### Task F1: Add predict.fun positions adapter
+
+**Objective:** Fetch and normalize execution-wallet positions without signing or broadcasting.
+
+**Files:**
+- Create: `src/adapters/PredictFunPositionsAdapter.ts`
+- Modify: `src/domain/types.ts`
+- Test: `tests/predictFunPositionsAdapter.test.ts`
+
+**Endpoint:**
+- `GET /v1/positions/<wallet>` with `x-api-key`.
+- Live probe on 2026-06-18:
+  - predict account `0x5b4D5ed6eD6c16Fe9eABf552479711C50e6D5E55` returned one resolved DOWN position with nested `market.conditionId`, `market.id`, `market.isNegRisk`, `market.isYieldBearing`, and `outcome.indexSet` / `outcome.onChainId` / `outcome.status`.
+  - execution wallet `0x694878196b7088E3f44Da94c63F263Ce20D797fC` returned `200 { cursor:null, data:[], success:true }`.
+- Bare `GET /v1/positions` returned `401`, so always query by wallet.
+
+**Normalize:**
 - `marketId`
-- outcome `onChainId` / token id
-- exchange contract/verifying contract
-- fee bps
-- status / close time
-- neg-risk/yield flags if relevant
+- `conditionId`
+- `indexSet`
+- `outcome` / `direction`
+- `amount` as raw wei/string and decimal display only
+- `isNegRisk`
+- `isYieldBearing`
+- `redeemable` / `mergeable` / `status` if present
+- source payload subset redacted of anything sensitive
 
-#### Task F2: Add EIP-712 signed dry-run
+**Safety:** This adapter is read-only and may run in inspect/paper/dry-run/live.
 
-**Objective:** Build and sign predict.fun order typed data without submitting.
+#### Task F2: Add redemption planner and dry-run CLI
+
+**Objective:** Convert normalized settled/redeemable positions into explicit redemption intents before any transaction.
 
 **Files:**
-- Create: `src/execution/PredictFunOrderPlanner.ts`
-- Create: `src/execution/PredictFunOrderSigner.ts`
-- Test: `tests/predictFunOrderSigner.test.ts`
+- Create: `src/execution/PredictFunRedemptionExecutor.ts`
+- Modify: `src/cli.ts` to add `positions` and `redeem-positions --dry-run` commands
+- Test: `tests/predictFunRedemptionExecutor.test.ts`
 
-**Safety:**
-- Signing disabled in inspect/paper.
-- `RUN_MODE=signed_dry_run` required for local signature generation.
-- Never print signatures unless explicitly useful; signatures are not private keys but still avoid leaking in routine logs.
+**Planner rules:**
+1. Redeem only rows with `conditionId` + `indexSet` and redeemable/settled status.
+2. For standard markets call SDK `redeemPositions({ conditionId, indexSet, isNegRisk:false, isYieldBearing })`.
+3. For neg-risk markets include `amount` and call `redeemPositions({ conditionId, indexSet, amount, isNegRisk:true, isYieldBearing })`.
+4. Produce a JSON plan with market IDs, condition IDs, index sets, amount, market flags, and estimated action count.
+5. Never print private keys, JWTs, signatures, or raw auth headers.
 
-#### Task F3: Validate predict.fun REST auth scaffolding
+#### Task F3: Add live redemption gate
 
-**Objective:** Validate the official predict.fun REST auth path before any order submission.
+**Objective:** Broadcast redemption transactions only when explicitly approved.
 
-**Current status:** REST auth scaffolding uses `GET /v1/auth/message` with `x-api-key`, signs the returned Predict account message, posts `{ signer, message, signature }` to `POST /v1/auth`, and caches the returned JWT outside the repo at `PREDICT_FUN_JWT_CACHE_FILE`.
+**Required gates:**
+- explicit command such as `redeem-positions --live`
+- `LIVE_TRADING_APPROVED=true` or a separate `PREDICT_FUN_REDEMPTION_APPROVED=true`
+- `PREDICT_FUN_PRIVY_KEY_FILE` exists
+- `BSC_RPC_URL` / SDK provider healthy
+- dry-run plan in the same command reports at least one eligible action
+- max action count cap unless overridden by explicit flag
 
-**Remaining validation:**
-1. Confirm the installed official SDK exposes `OrderBuilder.make(ChainId.BnbMainnet, wallet, { predictAccount })` and `signPredictAccountMessage(message)`.
-2. Confirm the JWT response field name against live credentials.
-3. Link/import TWAK wallet into predict.fun if possible, solving both TWAK execution and PnL-scoring alignment.
+**Verification:**
+- Unit tests with fake `OrderBuilder.redeemPositions`.
+- Live dry-run against current execution wallet.
+- No live broadcast without Ayaz approval.
 
-#### Task F4: Add live order submission gate
+#### Task F4: Add merge planner for equal opposing positions
 
-**Objective:** Submit live orders only after all gates are green.
+**Objective:** Recover collateral from balanced UP/DOWN positions before settlement when safe.
+
+**Files:**
+- Extend: `src/execution/PredictFunRedemptionExecutor.ts`
+- Test: `tests/predictFunRedemptionExecutor.test.ts`
+
+**Rules:**
+1. Group positions by `conditionId`.
+2. If both sides exist, compute the minimum common amount.
+3. In dry-run, output `mergePositions({ conditionId, amount, isNegRisk, isYieldBearing })` intent.
+4. Live merge uses a separate approval flag from live trading/redemption unless Ayaz explicitly approves bulk lifecycle ops.
+
+#### Task F5: Add portfolio/scorecard accounting
+
+**Objective:** Make live readiness measurable: open exposure, realized PnL, redeemables, mergeables, trade count, and drawdown.
+
+**Files:**
+- Create: `src/storage/PortfolioJournal.ts` or extend `RunRepository` position tables
+- Create: `src/reporting/Scorecard.ts`
+- Test: `tests/scorecard.test.ts`
+
+**Output:**
+- open positions by market/side
+- total at-risk USDT
+- realized PnL from redeemed/settled rows
+- unresolved exposure
+- redeemable amount/actions
+- max drawdown estimate
+- hackathon trade count
+
+#### Task F6: Keep live order submission gate strict
+
+**Objective:** Submit live orders only after all gates are green. The order path exists; keep production gates explicit.
 
 **Required gates:**
 - `RUN_MODE=live`
@@ -569,7 +644,7 @@ export interface CmcAgentHubSnapshot {
 - CMC snapshot fresh
 - Pyth feed fresh
 - TWAK/registered wallet decision documented
-- paper/signed-dry-run passed
+- paper/dry-run passed
 
 ---
 
@@ -633,14 +708,16 @@ CMC Agent Hub → Strategy Skill/Tuner → Agent Loop → Risk Manager → predi
 
 ## 6. Immediate Priority Order
 
-1. **Ask/resolve wallet registration/PnL scoring question.** This is the highest-risk ambiguity.
-2. **Implement BNB Agent SDK ERC-8004 dry-run registration script.** Be ready to register once approved.
-3. **Make CMC Agent Hub first-class in inspect and paper logs.** This is required for both main story and special prize.
-4. **Create Track 2 Skill package.** It is low-risk and directly prize-eligible.
-5. **Wire CMC Strategy Skill/Tuner into paper loop with bounded deltas.** Makes the bot demonstrably agentic.
-6. **Add TWAK balance/funding planner.** Gives Trust Wallet Agent Kit a real role beyond readiness.
-7. **Resolve predict.fun auth/live order blocker.** Required for true Track 1 live PnL.
-8. **Prepare demo/submission docs.**
+1. **Add predict.fun positions + redemption dry-run.** This closes the biggest production lifecycle gap before real funds accumulate stuck settled positions.
+2. **Add portfolio/scorecard accounting.** Needed for live PnL, drawdown, trade count, redeemables, and operator decisions.
+3. **Re-baseline dry-run/live order gates.** Ensure the existing one-dollar-tested order path still works after lifecycle changes.
+4. **Ask/resolve wallet registration/PnL scoring question.** This remains the highest external ambiguity.
+5. **Implement BNB Agent SDK ERC-8004 dry-run registration script.** Be ready to register once approved.
+6. **Make CMC Agent Hub first-class in inspect and paper logs.** This is required for both main story and special prize.
+7. **Create Track 2 Skill package.** It is low-risk and directly prize-eligible.
+8. **Wire CMC Strategy Skill/Tuner into paper loop with bounded deltas.** Makes the bot demonstrably agentic.
+9. **Add TWAK balance/funding planner.** Gives Trust Wallet Agent Kit a real role beyond readiness.
+10. **Prepare demo/submission docs.**
 
 ---
 
@@ -650,6 +727,8 @@ CMC Agent Hub → Strategy Skill/Tuner → Agent Loop → Risk Manager → predi
 - Organizer answer on ERC-8004 wallet vs trading wallet/PnL scoring.
 - Whether Ayaz wants any mainnet registration broadcast before all live-trading blockers are solved.
 - predict.fun JWT from the official API-key + Predict-account signing flow.
+- Confirm exact non-empty `/v1/positions/<wallet>` response fields after we have live positions; current wallet returned an empty `data[]` on 2026-06-18.
+- Explicit approval before any live redemption, merge, funding transfer, agent registration, or live order broadcast.
 - Funding amount and explicit approval if we move money from TWAK to predict.fun execution wallet.
 - Public endpoint/domain for agent status/profile URI, unless we use IPFS/static JSON.
 

@@ -82,6 +82,36 @@ export interface MarketSnapshot {
   readonly markets: readonly PredictFunMarket[];
 }
 
+export interface PredictFunPosition {
+  readonly walletAddress: string;
+  readonly marketId?: string;
+  readonly conditionId?: string;
+  readonly indexSet?: string;
+  readonly token?: string;
+  readonly outcome?: string;
+  readonly direction?: MarketDirection;
+  readonly amount: string;
+  readonly amountDisplay?: number;
+  readonly isNegRisk?: boolean;
+  readonly isYieldBearing?: boolean;
+  readonly status?: string;
+  readonly redeemable?: boolean;
+  readonly mergeable?: boolean;
+  readonly capturedAt: Date;
+  readonly source: "predict.fun";
+  readonly raw?: Record<string, unknown>;
+}
+
+export interface PredictFunPositionsSnapshot {
+  readonly walletAddress: string;
+  readonly capturedAt: Date;
+  readonly source: "predict.fun";
+  readonly status: "available" | "unavailable";
+  readonly reason?: string;
+  readonly apiError?: string;
+  readonly positions: readonly PredictFunPosition[];
+}
+
 export interface MacroSnapshot {
   readonly capturedAt: Date;
   readonly source: "coinmarketcap";

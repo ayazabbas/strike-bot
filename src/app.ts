@@ -2,6 +2,7 @@ import type { AppConfig, RunMode } from "./config.js";
 import type { CmcAdapter } from "./adapters/CmcAdapter.js";
 import type { PredictFunAdapter } from "./adapters/PredictFunAdapter.js";
 import type { PredictFunAuthAdapter } from "./adapters/PredictFunAuthAdapter.js";
+import type { PredictFunPositionsAdapter } from "./adapters/PredictFunPositionsAdapter.js";
 import type { PythAdapter } from "./adapters/PythAdapter.js";
 import type { TrustWalletAgentKitAdapter } from "./adapters/TrustWalletAgentKitAdapter.js";
 import type { PredictFunExecutionWalletAdapter } from "./adapters/PredictFunExecutionWalletAdapter.js";
@@ -177,6 +178,10 @@ function formatTwakFundingWallet(twak: Awaited<ReturnType<TrustWalletAgentKitAda
 
 export async function settlePaperJournal(config: AppConfig, dependencies: Pick<AppDependencies, "predictFun">) {
   return enrichPaperJournalSettlements(config.paperJournalPath, dependencies.predictFun);
+}
+
+export async function inspectPositions(_config: AppConfig, adapter: PredictFunPositionsAdapter) {
+  return adapter.getPositions();
 }
 
 function formatSelectedMarket(selected: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>) {
