@@ -11,6 +11,7 @@ describe("config", () => {
     expect(config.runMode).toBe("inspect");
     expect(config.maxPositionUsd).toBe(5);
     expect(config.liveTradingApproved).toBe(false);
+    expect(config.predictFunRedemptionApproved).toBe(false);
     expect(config.trustWalletAgentKitEnabled).toBe(true);
     expect(config.pythHistoryBaseUrl).toBe("https://pyth.dourolabs.app/v1");
     expect(config.pythHistoryChannel).toBe("real_time");
@@ -41,7 +42,8 @@ describe("config", () => {
       STRATEGY_MIN_EDGE: "0.07",
       STRATEGY_CANDLE_START_TOLERANCE_SECONDS: "45",
       PAPER_JOURNAL_PATH: "tmp/paper.jsonl",
-      MAX_TEST_TRADE_USD: "0.05"
+      MAX_TEST_TRADE_USD: "0.05",
+      PREDICT_FUN_REDEMPTION_APPROVED: "true"
     });
 
     expect(config.predictFunApiKey).toBe("predict-test-key");
@@ -56,6 +58,7 @@ describe("config", () => {
     expect(config.strategyCandleStartToleranceSeconds).toBe(45);
     expect(config.paperJournalPath).toBe("tmp/paper.jsonl");
     expect(config.maxTestTradeUsd).toBe(0.05);
+    expect(config.predictFunRedemptionApproved).toBe(true);
   });
 
   it("loads predict.fun API key from an external file path", () => {

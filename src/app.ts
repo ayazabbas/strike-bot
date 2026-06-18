@@ -14,6 +14,7 @@ import { filterBtcFiveMinuteMarkets, selectNearestTradableBtcFiveMinuteMarket } 
 import { RiskManager } from "./risk/RiskManager.js";
 import { PaperExecutor } from "./execution/PaperExecutor.js";
 import { PredictFunOrderExecutor } from "./execution/PredictFunOrderExecutor.js";
+import { PredictFunRedemptionExecutor } from "./execution/PredictFunRedemptionExecutor.js";
 import { PredictFunRedemptionPlanner } from "./execution/PredictFunRedemptionPlanner.js";
 
 export interface AppDependencies {
@@ -188,6 +189,11 @@ export async function inspectPositions(_config: AppConfig, adapter: PredictFunPo
 export async function redeemPositionsDryRun(_config: AppConfig, adapter: PredictFunPositionsAdapter) {
   const snapshot = await adapter.getPositions();
   return new PredictFunRedemptionPlanner().plan(snapshot);
+}
+
+export async function redeemPositionsLive(config: AppConfig, adapter: PredictFunPositionsAdapter) {
+  const plan = await redeemPositionsDryRun(config, adapter);
+  return new PredictFunRedemptionExecutor(config).execute(plan, "live");
 }
 
 function formatSelectedMarket(selected: ReturnType<typeof selectNearestTradableBtcFiveMinuteMarket>) {

@@ -50,7 +50,8 @@ export const configSchema = z.object({
   maxPositionUsd: z.coerce.number().positive().max(100).default(5),
   maxDailyLossUsd: z.coerce.number().positive().max(1_000).default(10),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  liveTradingApproved: booleanFromEnv.default(false)
+  liveTradingApproved: booleanFromEnv.default(false),
+  predictFunRedemptionApproved: booleanFromEnv.default(false)
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -93,7 +94,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxPositionUsd: env.MAX_POSITION_USD,
     maxDailyLossUsd: env.MAX_DAILY_LOSS_USD,
     logLevel: env.LOG_LEVEL,
-    liveTradingApproved: env.LIVE_TRADING_APPROVED
+    liveTradingApproved: env.LIVE_TRADING_APPROVED,
+    predictFunRedemptionApproved: env.PREDICT_FUN_REDEMPTION_APPROVED
   });
 }
 

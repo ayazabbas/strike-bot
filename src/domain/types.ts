@@ -171,6 +171,28 @@ export interface PredictFunRedemptionPlan {
   };
 }
 
+export interface RedactedPredictFunRedemptionTxResult {
+  readonly intentIndex: number;
+  readonly conditionId: string;
+  readonly indexSet: string;
+  readonly txHash?: string;
+  readonly status?: string;
+}
+
+export interface PredictFunRedemptionExecutionResult {
+  readonly mode: "dry_run" | "live";
+  readonly dryRun: boolean;
+  readonly status: "skipped" | "prepared_not_broadcast" | "broadcast" | "failed";
+  readonly reason?: string;
+  readonly intentsCount: number;
+  readonly safety: {
+    readonly signing: boolean;
+    readonly broadcasting: boolean;
+  };
+  readonly plan?: PredictFunRedemptionPlan;
+  readonly txResults?: readonly RedactedPredictFunRedemptionTxResult[];
+}
+
 export interface MacroSnapshot {
   readonly capturedAt: Date;
   readonly source: "coinmarketcap";
